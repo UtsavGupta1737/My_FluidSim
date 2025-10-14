@@ -37,39 +37,45 @@ class Widget:
         self.resize_margin = 8
 
 class Button(Widget):
-    def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None, target_window: Optional[object] = None):
+    def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None):
         super().__init__(rect)
         self.text = text
         self.on_click = on_click
-        self.target_window = target_window
-        # if a target window is supplied and no on_click, create a toggle handler
-        if self.on_click is None and self.target_window is not None:
-            def _toggle(win=self.target_window):
-                win.visible = not win.visible
-                # if this window is managed by a MasterWindow, bring it to front when shown
-                parent = getattr(win, '_parent_master', None)
-                if parent is not None and hasattr(parent, 'child_windows'):
-                    try:
-                        idx = parent.child_windows.index(win)
-                        # move to end to render on top
-                        parent.child_windows.append(parent.child_windows.pop(idx))
-                    except ValueError:
-                        pass
-            self.on_click = _toggle
         self.hover = False
+        self.clicked = False
+        print(f"Button created with on_click: {on_click}")
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
             self.hover = self.rect.collidepoint(event.pos)
+            # print(f"Button hover: {self.hover}")
+        
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
+                self.clicked = True
+                print("Button clicked")
+                return True
+        
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.clicked and self.rect.collidepoint(event.pos):
                 if self.on_click:
                     self.on_click()
+                    print("Button action triggered")
+                self.clicked = False
                 return True
+            self.clicked = False
+            
         return False
 
     def draw(self, surf):
-        color = (230, 230, 250) if self.hover else (245, 245, 250)
+        # Determine color based on state
+        if self.clicked:
+            color = (190, 190, 200)
+        elif self.hover:
+            color = (230, 230, 250)
+        else:
+            color = (245, 245, 250)
+            
         pygame.draw.rect(surf, color, self.rect, border_radius=8)
         pygame.draw.rect(surf, BORDER, self.rect, 1, border_radius=8)
         txt = FONT.render(self.text, True, TEXT)
@@ -282,7 +288,10 @@ class Window(Widget):
         # initialy making a dummy rect, will be updated by layout
         btn = Button(pygame.Rect(0,0,1,1), text, on_click)
         self.layout.add_widget(btn,row,col)
+        print(f"on_click: {on_click}")
         return btn
+        
+
 
     def add_checkbox(self, row: int, col: int, checked: bool = False, on_change: Optional[Callable] = None) -> Checkbox:
         chk = Checkbox(pygame.Rect(0, 0, 1, 1), checked=checked, on_change=on_change)
@@ -301,6 +310,7 @@ class Window(Widget):
 
     def _close(self):
         self.visible = not self.visible
+        print(self.visible)
 
     def _minimize(self):
         self.minimized = not self.minimized
@@ -335,6 +345,10 @@ class Window(Widget):
                 return True
         if self.min_btn.handle_event(event):
             return True
+        
+        # pass event to layout widgets
+        if self.layout:
+            self.layout.handle_event(event)
 
         # detect resize start (edges/corners)
         mx, my = None, None
@@ -387,9 +401,6 @@ class Window(Widget):
 
         # Mouse movement
         elif event.type == pygame.MOUSEMOTION:
-
-            # updating the layout rect
-            self.layout.update_positions(self.rect)
 
             # Dragging
             if self.dragging:
@@ -456,17 +467,11 @@ class Window(Widget):
         if getattr(self, 'show_min', True):
             self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
             self._draw_control_icon(surf, self.min_btn.rect, "min")
+
+        # update layout rect to match window size
+        self.layout.update_positions(self.rect)
+
         if not self.minimized:
-            # draw widgets
-            for w in self.widgets:
-                rel = getattr(w, '_relative_rect', w.rect)
-                abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
-                orig = w.rect
-                w.rect = abs_rect
-                try:
-                    w.draw(surf)
-                finally:
-                    w.rect = orig
             # draw resize grip
             grip_rect = pygame.Rect(self.rect.right - 12, self.rect.bottom - 12, 10, 10)
             pygame.draw.rect(surf, (200, 200, 200), grip_rect)
