@@ -277,14 +277,15 @@ class Window(Widget):
         self.isMain = False
         self.D_info = False
 
+        # add grid layout
+        self.layout = GridLayout(pygame.Rect(0, 0, 1, 1), self.Grid[0], self.Grid[1], self.padding)
+ 
+
         # control buttons
-        if not self.isMain:
-            self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
+        self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
         self.min_btn = Button(pygame.Rect(0, 0, 28, 20), "_", self._minimize)
 
-        # add grid layout
-        self.layout = GridLayout(pygame.Rect(x, y, self.rect.width, self.rect.height ), self.Grid[0], self.Grid[1], self.padding)
- 
+        
     def add(self, widget: Widget):
         # not needed anymore, kept for reference
         # store widget's rect relative to window origin
@@ -343,7 +344,16 @@ class Window(Widget):
             return False
             
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
-        
+
+        # handle control buttons first
+        self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
+        if self.close_btn.handle_event(event):
+            return True
+        self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
+        if self.min_btn.handle_event(event):
+            return True
+
+
         # pass event to layout widgets first, so they get priority
         if self.layout and self.layout.handle_event(event):
             return True
