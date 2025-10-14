@@ -104,14 +104,12 @@ class Checkbox(Widget):
 
     def draw(self, surf):
         # update text rect in case widget was resized
-        self.txt = self.rect.x + self.box_size + 10 #  x position of text
-        self.txt_rect = pygame.Rect(self.txt, self.rect.y, self.rect.width - self.box_size - 8, self.rect.height)
         txt = FONT.render(self.text, True, TEXT)
-        surf.blit(txt, self.txt_rect)
+        surf.blit(txt, txt.get_rect(center=self.rect.center))
 
 
         # update box rect in case widget was resized
-        self.box_size = min(self.rect.height - 4, 20)
+        self.box_size = min(self.rect.height - 10, 20)
         self.box_rect = pygame.Rect(self.rect.x + 5, self.rect.y + (self.rect.height - self.box_size) // 2, self.box_size, self.box_size)
 
 
@@ -122,13 +120,14 @@ class Checkbox(Widget):
             pygame.draw.rect(surf, ACCENT, inner, border_radius=3)
 
 class Slider(Widget):
-    def __init__(self, rect: pygame.Rect, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None):
+    def __init__(self, rect: pygame.Rect, text: str, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None):
         super().__init__(rect)
         self.min_val = min_val
         self.max_val = max_val
         self.value = value
         self.on_change = on_change
         self.dragging = False
+        self.text = text   
 
     def _value_to_pos(self):
         ratio = (self.value - self.min_val) / (self.max_val - self.min_val)
@@ -161,7 +160,7 @@ class Slider(Widget):
 
     def draw(self, surf):
         # track
-        track_rect = pygame.Rect(self.rect.x + 8, self.rect.centery - 4, self.rect.width - 16, 8)
+        track_rect = pygame.Rect(self.rect.x + 8, self.rect.centery + 8, self.rect.width - 16, 8)
         pygame.draw.rect(surf, (235, 235, 240), track_rect, border_radius=4)
         # fill
         fill_w = int((self.value - self.min_val) / (self.max_val - self.min_val) * track_rect.width)
@@ -169,13 +168,12 @@ class Slider(Widget):
             pygame.draw.rect(surf, ACCENT, (track_rect.x, track_rect.y, fill_w, track_rect.height), border_radius=4)
         # knob
         kx = self._value_to_pos()
-        knob = pygame.Rect(kx - 8, self.rect.centery - 12, 16, 24)
+        knob = pygame.Rect(kx - 8, track_rect.centery - 8 , 16, 16)
         pygame.draw.rect(surf, WINDOW_BG, knob, border_radius=8)
         pygame.draw.rect(surf, BORDER, knob, 1, border_radius=8)
         # value label
-        val_txt = SMALL_FONT.render(f"{self.value:.2f}", True, SUBTEXT)
-        surf.blit(val_txt, (self.rect.right + 8, self.rect.centery - val_txt.get_height() / 2))
-
+        val_txt = SMALL_FONT.render(f"{self.text} : {self.value:.2f}", True, SUBTEXT)
+        surf.blit(val_txt, (self.rect.x + 8, self.rect.centery-(val_txt.get_height() / 2)-8))
 
 class TextInput(Widget):
     def __init__(self, rect: pygame.Rect, text: str = "", on_change: Optional[Callable] = None):
@@ -274,6 +272,8 @@ class Window(Widget):
         self.min_width = 200
         self.min_height = 100
         self.resize_margin = 5
+        self.Grid = (5,2)
+        self.padding = 5
 
 
         # Check if this window is a Main window
@@ -286,22 +286,17 @@ class Window(Widget):
         self.min_btn = Button(pygame.Rect(0, 0, 28, 20), "_", self._minimize)
 
         # add grid layout
-        self.layout = GridLayout(pygame.Rect(x, y, self.rect.width, self.rect.height ), rows=5, cols=2)
-
-    
-    # not needed anymore, kept for reference
+        self.layout = GridLayout(pygame.Rect(x, y, self.rect.width, self.rect.height ), self.Grid[0], self.Grid[1], self.padding)
+ 
     def add(self, widget: Widget):
+        # not needed anymore, kept for reference
         # store widget's rect relative to window origin
         rel_x = widget.rect.x - self.rect.x
         rel_y = widget.rect.y - self.rect.y
         widget._relative_rect = pygame.Rect(rel_x, rel_y, widget.rect.width, widget.rect.height)
         self.widgets.append(widget)
 
-    # not needed anymore, kept for reference
-    # def layout_widget(self, widget, row, col):
-    #     self.layout.add_widget(widget, row, col)
-
-    # convenience factory helpers that create widgets using grid layout
+    # Add to grid layout
     def add_button(self, row: int, col: int, text: str, on_click: Optional[Callable] = None) -> Button:
         # initialy making a dummy rect, will be updated by layout
         btn = Button(pygame.Rect(0,0,1,1), text, on_click)
@@ -309,15 +304,13 @@ class Window(Widget):
         print(f"on_click: {on_click}")
         return btn
         
-
-
     def add_checkbox(self, row: int, col: int, text: str, on_change: Optional[Callable] = None) -> Checkbox:
         chk = Checkbox(pygame.Rect(0, 0, 1, 1), text=text, on_change=on_change)
         self.layout.add_widget(chk, row, col)
         return chk
 
-    def add_slider(self, row: int, col: int, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None) -> Slider:
-        s = Slider(pygame.Rect(0, 0, 1, 1), min_val, max_val, value, on_change=on_change)
+    def add_slider(self, row: int, col: int, text: str, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None) -> Slider:
+        s = Slider(pygame.Rect(0,0,1,1), text, min_val, max_val, value, on_change=on_change)
         self.layout.add_widget(s, row, col)
         return s
 
@@ -513,7 +506,7 @@ class Window(Widget):
 
 
 class GridLayout:
-    def __init__(self, rect, rows, cols, padding=10):
+    def __init__(self, rect, rows, cols, padding=0):
         self.rect = rect
         self.rows = rows
         self.cols = cols
