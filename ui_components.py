@@ -11,7 +11,7 @@ WINDOW_BG = (255, 255, 255)
 ACCENT = (79, 70, 229)
 TEXT = (30, 30, 30)
 SUBTEXT = (100, 100, 110)
-BORDER = (220, 220, 225)
+BORDER = (200, 200, 200)
 DARK_BG = (18, 18, 20)
 DARK_WINDOW_BG = (28, 28, 30)
 DARK_TEXT = (230, 230, 230)
@@ -43,7 +43,6 @@ class Button(Widget):
         self.on_click = on_click
         self.hover = False
         self.clicked = False
-        print(f"Button created with on_click: {on_click}")
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
@@ -53,14 +52,12 @@ class Button(Widget):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
                 self.clicked = True
-                print("Button clicked")
                 return True
         
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.clicked and self.rect.collidepoint(event.pos):
                 if self.on_click:
                     self.on_click()
-                    print("Button action triggered")
                 self.clicked = False
                 return True
             self.clicked = False
@@ -82,14 +79,23 @@ class Button(Widget):
         surf.blit(txt, txt.get_rect(center=self.rect.center))
 
 class Checkbox(Widget):
-    def __init__(self, rect: pygame.Rect, checked=False, on_change: Optional[Callable] = None):
+    def __init__(self, rect: pygame.Rect,text: str, on_change: Optional[Callable] = None):
         super().__init__(rect)
-        self.checked = checked
+        self.checked = False
         self.on_change = on_change
+        self.text = text
 
+        # create a text box inside the checkbox for label
+        self.txt_rect = pygame.Rect(0,0,10,10)
+
+
+        # create a small checkbox rect in middle of widget
+        self.box_size = 20
+        self.box_rect = pygame.Rect(0,0,5,5)
+        
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(event.pos):
+            if self.box_rect.collidepoint(event.pos):
                 self.checked = not self.checked
                 if self.on_change:
                     self.on_change(self.checked)
@@ -97,10 +103,22 @@ class Checkbox(Widget):
         return False
 
     def draw(self, surf):
-        pygame.draw.rect(surf, WINDOW_BG, self.rect)
-        pygame.draw.rect(surf, BORDER, self.rect, 1, border_radius=4)
+        # update text rect in case widget was resized
+        self.txt = self.rect.x + self.box_size + 10 #  x position of text
+        self.txt_rect = pygame.Rect(self.txt, self.rect.y, self.rect.width - self.box_size - 8, self.rect.height)
+        txt = FONT.render(self.text, True, TEXT)
+        surf.blit(txt, self.txt_rect)
+
+
+        # update box rect in case widget was resized
+        self.box_size = min(self.rect.height - 4, 20)
+        self.box_rect = pygame.Rect(self.rect.x + 5, self.rect.y + (self.rect.height - self.box_size) // 2, self.box_size, self.box_size)
+
+
+        pygame.draw.rect(surf, WINDOW_BG, self.box_rect)
+        pygame.draw.rect(surf, BORDER, self.box_rect, 2, border_radius=4)
         if self.checked:
-            inner = self.rect.inflate(-6, -6)
+            inner = self.box_rect.inflate(-6, -6)
             pygame.draw.rect(surf, ACCENT, inner, border_radius=3)
 
 class Slider(Widget):
@@ -293,8 +311,8 @@ class Window(Widget):
         
 
 
-    def add_checkbox(self, row: int, col: int, checked: bool = False, on_change: Optional[Callable] = None) -> Checkbox:
-        chk = Checkbox(pygame.Rect(0, 0, 1, 1), checked=checked, on_change=on_change)
+    def add_checkbox(self, row: int, col: int, text: str, on_change: Optional[Callable] = None) -> Checkbox:
+        chk = Checkbox(pygame.Rect(0, 0, 1, 1), text=text, on_change=on_change)
         self.layout.add_widget(chk, row, col)
         return chk
 

@@ -13,6 +13,7 @@ win = Window(50, 50, 400, 300, title="Main Window")
 win2 = Window(300, 50, 400, 300, title="Window 2")
 win.add_button(0,0, "Click Me", win2._close)
 win.add_button(0,1, "Don't Click Me", win2._close)
+win.add_checkbox(1,0, "Tick Me")
 
 running = True
 while running:
