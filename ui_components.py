@@ -270,11 +270,12 @@ class Window(Widget):
         self.resize_dir = None  # 'n','s','e','w','ne','nw','se','sw'
         self.min_width = 200
         self.min_height = 100
-        self.resize_margin = 5
+        self.resize_margin = 10
         self.Grid = (5,2)
         self.padding = 5
         self._parent_master = None
         self.isMain = False
+        self.D_info = False
 
         # control buttons
         if not self.isMain:
@@ -355,13 +356,22 @@ class Window(Widget):
             right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
             top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
             bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
-            
+            se_margin = pygame.Rect(r.right, r.bottom, self.resize_margin, self.resize_margin)
+            ne_margin = pygame.Rect(r.right , r.y - self.resize_margin, self.resize_margin, self.resize_margin)
+            nw_margin = pygame.Rect(r.x - self.resize_margin, r.y - self.resize_margin, self.resize_margin, self.resize_margin)
+            sw_margin = pygame.Rect(r.x - self.resize_margin, r.bottom, self.resize_margin, self.resize_margin)
+
+
             if left_margin.collidepoint(mx, my): self.resize_dir = 'w'
             elif right_margin.collidepoint(mx, my): self.resize_dir = 'e'
             elif top_margin.collidepoint(mx, my): self.resize_dir = 'n'
             elif bottom_margin.collidepoint(mx, my): self.resize_dir = 's'
-            
-            if self.resize_dir:
+            elif se_margin.collidepoint(mx, my): self.resize_dir = 'se'
+            elif ne_margin.collidepoint(mx, my): self.resize_dir = 'ne' 
+            elif nw_margin.collidepoint(mx, my): self.resize_dir = 'nw'
+            elif sw_margin.collidepoint(mx, my): self.resize_dir = 'sw'
+
+            if self.resize_dir and not self.dragging:
                 self.resizing = True
                 self.offset = (mx, my)
                 return True
@@ -451,6 +461,9 @@ class Window(Widget):
             # draw Widget using layout
             self.layout.draw(surf)
 
+        # debug info
+        self.debug_info(surf)
+
     def _draw_control_icon(self, surf, rect, kind: str):
         # background
         # Calculate the circle's center and radius from the rect
@@ -464,6 +477,36 @@ class Window(Widget):
             pygame.draw.circle(surf, (255,0,0), circle_center, circle_radius) 
         elif kind == "min":
             pygame.draw.circle(surf, (255,234,0), circle_center, circle_radius)
+
+    def debug_info(self, surf):
+        show_margin = True
+
+        if not self.D_info:
+            return
+        info = f"Pos: ({self.rect.x},{self.rect.y}) Size: ({self.rect.width}x{self.rect.height})"
+        txt = SMALL_FONT.render(info, True, (200, 0, 0))
+        surf.blit(txt, (self.rect.x + 10, self.rect.bottom - 20))
+
+        if show_margin:
+            # draw resize margins
+            r = self.rect
+            left_margin = pygame.Rect(r.x, r.y, self.resize_margin, r.height)
+            right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
+            top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
+            bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
+            se_margin = pygame.Rect(r.right, r.bottom, self.resize_margin, self.resize_margin)
+            ne_margin = pygame.Rect(r.right , r.y - self.resize_margin, self.resize_margin, self.resize_margin)
+            nw_margin = pygame.Rect(r.x - self.resize_margin, r.y - self.resize_margin, self.resize_margin, self.resize_margin)
+            sw_margin = pygame.Rect(r.x - self.resize_margin, r.bottom, self.resize_margin, self.resize_margin)
+
+            pygame.draw.rect(surf, (255, 0, 0), left_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), right_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), top_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), bottom_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), se_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), ne_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), nw_margin, 1)
+            pygame.draw.rect(surf, (255, 0, 0), sw_margin, 1)
 
 # Grid Layout Manager
 class GridLayout:
@@ -530,6 +573,7 @@ class GridLayout:
         for widget in self.widgets.values():
             widget.draw(surf)
 
+
 def set_theme(name: str):
     global THEME, WINDOW_BG, TEXT
     if name not in ("light", "dark"):
@@ -547,7 +591,6 @@ class MasterWindow(Window):
     def __init__(self,x , y, w, h, title: str = "Master Window"):
         super().__init__(x, y, w, h, title)
         self.child_windows = []
-        self.isMain = True
 
     def add_child(self, child_window):
         # Set a reference to the parent for z-ordering
@@ -555,20 +598,25 @@ class MasterWindow(Window):
         self.child_windows.append(child_window)
 
     def handle_event(self, event):
-        # We handle events for the master window first
-        super().handle_event(event)
-        
-        # Then, we iterate through children in reverse for z-ordering
+        # Iterate children from topmost to bottommost (reverse list)
         for child in reversed(self.child_windows):
+            # Update child's absolute rect if it has a parent-relative position
+            if hasattr(child, '_relative_rect') and getattr(self, 'rect', None) is not None:
+                rel = child._relative_rect
+                child.rect.x = self.rect.x + rel.x
+                child.rect.y = self.rect.y + rel.y
+            # Give the child a chance to handle the event. If it does,
+            # bring it to front (move to end of list) and stop event propagation.
             if child.handle_event(event):
-                # If a child window handled the event, we stop.
-                # This ensures clicks go to the top window.
+                try:
+                    idx = self.child_windows.index(child)
+                    self.child_windows.append(self.child_windows.pop(idx))
+                except ValueError:
+                    pass
                 return True
         return False
 
     def draw(self, surf):
-        # First draw the master window itself
-        super().draw(surf)
         
         # Then, draw all child windows
         for child in self.child_windows:

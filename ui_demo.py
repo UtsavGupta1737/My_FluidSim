@@ -29,6 +29,8 @@ win.add_textinput(3, 0, "Name")
 win.add_textinput(3, 1, "Age")
 
 
+
+
 running = True
 while running:
     dt = clock.tick(FPS) / 1000.0
