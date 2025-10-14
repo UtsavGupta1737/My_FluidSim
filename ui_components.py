@@ -261,12 +261,21 @@ class Window(Widget):
             self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
         self.min_btn = Button(pygame.Rect(0, 0, 28, 20), "_", self._minimize)
 
+        # add grid layout
+        self.layout = GridLayout(pygame.Rect(x, y, self.rect.width, self.rect.height ), rows=5, cols=2)
+
+    
+    # not needed anymore, kept for reference
     def add(self, widget: Widget):
         # store widget's rect relative to window origin
         rel_x = widget.rect.x - self.rect.x
         rel_y = widget.rect.y - self.rect.y
         widget._relative_rect = pygame.Rect(rel_x, rel_y, widget.rect.width, widget.rect.height)
         self.widgets.append(widget)
+
+    # not needed anymore, kept for reference
+    # def layout_widget(self, widget, row, col):
+    #     self.layout.add_widget(widget, row, col)
 
     # convenience factory helpers that create widgets using coordinates relative to the window
     def add_button(self, x: int, y: int, w: int, h: int, text: str, on_click: Optional[Callable] = None) -> Button:
@@ -294,7 +303,7 @@ class Window(Widget):
         return t
 
     def _close(self):
-        self.visible = False
+        self.visible = not self.visible
 
     def _minimize(self):
         self.minimized = not self.minimized
@@ -330,12 +339,12 @@ class Window(Widget):
         if self.min_btn.handle_event(event):
             return True
 
-        # if not self.minimized:
         # detect resize start (edges/corners)
         mx, my = None, None
         if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
             mx, my = event.pos
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Checking mouse pos for resize
             if not self.minimized:
                 # check corners/edges
                 r = self.rect
@@ -365,26 +374,38 @@ class Window(Widget):
                     self.resize_dir = dir
                     self.offset = (mx, my)
                     return True
+ 
+            # Checking mouse pos for drag
             if header.collidepoint((mx, my)):
                 # start dragging only if not clicking a control
                 self.dragging = True
                 self.offset = (mx - self.rect.x, my - self.rect.y)
                 return True
+
+        # Reseting resize state on mouse down outside header
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging = False
             self.resizing = False
             self.resize_dir = None
+
+        # Mouse movement
         elif event.type == pygame.MOUSEMOTION:
+
+            # Dragging
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
                 # keep window on screen
                 self.clamp_to_screen()
+                # updating the layout rect
+                self.layout.update_positions(self.rect)
                 # update control icons immediately
                 if not self.isMain:
                     self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
                 self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
                 return True
+            
+            # Resizing
             if self.resizing and self.resize_dir:
                 mx, my = event.pos
                 dx = mx - self.offset[0]
@@ -406,13 +427,6 @@ class Window(Widget):
                         r.x = r.right - new_w
                         r.width = new_w
                         self.offset = (mx, self.offset[1])
-                # if 'n' in self.resize_dir:
-                #     new_y = r.y + dy
-                #     new_h = max(self.min_height, r.bottom - new_y)
-                #     if new_h != r.height:
-                #         r.y = r.bottom - new_h
-                #         r.height = new_h
-                #         self.offset = (self.offset[0], my)
                 # clamp after resizing
                 self.clamp_to_screen()
                 return True
@@ -424,6 +438,8 @@ class Window(Widget):
 
         # translate widget events to absolute coords and forward
         for w in self.widgets:
+            if isinstance(w, Window):
+                continue
             rel = getattr(w, '_relative_rect', w.rect)
             abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
             orig = w.rect
@@ -477,6 +493,9 @@ class Window(Widget):
             grip_rect = pygame.Rect(self.rect.right - 12, self.rect.bottom - 12, 10, 10)
             pygame.draw.rect(surf, (200, 200, 200), grip_rect)
 
+            # draw Widget using layout
+            self.layout.draw(surf)
+
     def _draw_control_icon(self, surf, rect, kind: str):
         # background
         # Calculate the circle's center and radius from the rect
@@ -492,115 +511,68 @@ class Window(Widget):
             pygame.draw.circle(surf, (255,234,0), circle_center, circle_radius)
 
 
+class GridLayout:
+    def __init__(self, rect, rows, cols, padding=10):
+        self.rect = rect
+        self.rows = rows
+        self.cols = cols
+        self.padding = padding
+        self.widgets = {} # Use a dictionary to store widgets by their row and column
 
+    def add_widget(self, widget, row, col):
+        if (row, col) in self.widgets:
+            print(f"Warning: A widget already exists at row {row}, col {col}")
+        self.widgets[(row, col)] = widget
 
-class MasterWindow(Window):
-    """A window that can host other windows as embedded child windows."""
-    def __init__(self, rect: pygame.Rect, title: str = "Master", window_class: str = None, class_props: dict = None):
-        super().__init__(rect, title)
-        self.child_windows = []
-        self.managed_windows = []  # list of (window, name, button)
-        # master shouldn't be closeable
-        self.show_close = False
-        # window class and default properties for child windows
-        self.window_class = window_class
-        self.class_props = class_props or {}
+    def update_positions(self,Rect=None):
+        # print(f"Drawing GridLayout at {self.rect} with {self.rows} rows and {self.cols} cols")
 
-    def add_window(self, window: Window, x: int, y: int):
-        # position window relative to master and add to children list
-        window.rect.x = self.rect.x + x
-        window.rect.y = self.rect.y + y
-        # store relative rect so child follows master when master moves
-        window._relative_rect = pygame.Rect(x, y, window.rect.width, window.rect.height)
-        # allow child to know its parent master (used by toggle helpers)
-        setattr(window, '_parent_master', self)
-        # inherit window_class if not set
-        if getattr(window, 'window_class', None) is None and self.window_class is not None:
-            window.window_class = self.window_class
-        # apply class_props defaults where the window doesn't explicitly set them
-        for k, v in self.class_props.items():
-            if not hasattr(window, k) or getattr(window, k) is None:
-                setattr(window, k, v)
-        self.child_windows.append(window)
+        # update layout rect to match parent window size
+        if Rect is not None:
+            self.rect = Rect
 
-    def manage_window(self, window: Window, name: str):
-        """Add a managed window with a toggle button in the master window header area."""
-        # create a small button inside master to toggle visibility
-        btn_w = 100
-        btn_h = 22
-        # position buttons stacked from left in the header area
-        x_off = 10 + len(self.managed_windows) * (btn_w + 6)
-        # button rect (absolute for initial creation)
-        btn_rect = pygame.Rect(self.rect.x + x_off, self.rect.y + 4, btn_w, btn_h)
-        def toggle(win=window):
-            win.visible = not win.visible
-            # if making visible, bring to front
-            if win.visible and win in self.child_windows:
-                try:
-                    idx = self.child_windows.index(win)
-                    self.child_windows.append(self.child_windows.pop(idx))
-                except ValueError:
-                    pass
+        # Calculate cell dimensions
+        cell_width = self.rect.width / self.cols
+        cell_height = self.rect.height / self.rows
 
-        # create a Button (do not add to master.widgets) and store a relative rect
-        btn = Button(btn_rect, name, toggle)
-        btn._relative_rect = pygame.Rect(x_off, 4, btn_w, btn_h)
-        self.managed_windows.append((window, name, btn))
+        for (row, col), widget in self.widgets.items():
+            # Calculate the top-left position for the widget
+            x = self.rect.x + col * cell_width + self.padding
+            y = self.rect.y + row * cell_height + self.padding
+
+            # Calculate the widget's new dimensions
+            width = cell_width - 2 * self.padding
+            height = cell_height - 2 * self.padding
+
+            # Update the widget's rect
+            widget.rect = pygame.Rect(x, y, width, height)
 
     def handle_event(self, event):
-        if not self.visible:
-            return False
-        # first, allow managed buttons to handle events
-        for _, _, btn in self.managed_windows:
-            # compute absolute rect for button based on master position
-            rel = btn._relative_rect
-            abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
-            orig = btn.rect
-            btn.rect = abs_rect
-            try:
-                if btn.handle_event(event):
-                    return True
-            finally:
-                btn.rect = orig
-
-        # translate event coordinates into child window space and forward
-        for cw in reversed(self.child_windows):
-            # ensure child's absolute position is updated from relative rect
-            if hasattr(cw, '_relative_rect'):
-                rel = cw._relative_rect
-                cw.rect.x = self.rect.x + rel.x
-                cw.rect.y = self.rect.y + rel.y
-            if cw.handle_event(event):
-                # bring clicked child to front (z-order) by moving it to end
-                try:
-                    idx = self.child_windows.index(cw)
-                    self.child_windows.append(self.child_windows.pop(idx))
-                except ValueError:
-                    pass
+        # Pass the event to each widget
+        for widget in self.widgets.values():
+            if widget.handle_event(event):
+                # If a widget handles the event, stop processing and return True
                 return True
-        # fallback to normal window behavior
-        return super().handle_event(event)
+        return False
 
     def draw(self, surf):
-        # draw master body and then draw child windows clipped inside
-        super().draw(surf)
-        # draw managed buttons at top-left area
-        for _, _, btn in self.managed_windows:
-            # draw using relative rect (translate)
-            orig = btn.rect
-            btn.rect = pygame.Rect(self.rect.x + btn._relative_rect.x, self.rect.y + btn._relative_rect.y, btn._relative_rect.width, btn._relative_rect.height)
-            try:
-                btn.draw(surf)
-            finally:
-                btn.rect = orig
-        for cw in self.child_windows:
-            # update child absolute pos from relative rect before drawing
-            if hasattr(cw, '_relative_rect'):
-                rel = cw._relative_rect
-                cw.rect.x = self.rect.x + rel.x
-                cw.rect.y = self.rect.y + rel.y
-            cw.draw(surf)
+        # First, make sure widget positions are up to date
+        self.update_positions()
 
+        pygame.draw.rect(surf, (240, 240, 245), self.rect,1)
+
+        # Draw a visual grid for debugging purposes (optional)
+        cell_width = self.rect.width / self.cols
+        cell_height = self.rect.height / self.rows
+        for row in range(self.rows):
+            for col in range(self.cols):
+                x = self.rect.x + col * cell_width
+                y = self.rect.y + row * cell_height
+                pygame.draw.rect(surf, (50, 50, 50), pygame.Rect(x, y, cell_width, cell_height), 1)
+
+        # Draw each widget
+        for widget in self.widgets.values():
+            widget.draw(surf)
 
 def set_theme(name: str):
     global THEME, WINDOW_BG, TEXT
