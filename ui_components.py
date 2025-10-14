@@ -12,6 +12,10 @@ ACCENT = (79, 70, 229)
 TEXT = (30, 30, 30)
 SUBTEXT = (100, 100, 110)
 BORDER = (220, 220, 225)
+DARK_BG = (18, 18, 20)
+DARK_WINDOW_BG = (28, 28, 30)
+DARK_TEXT = (230, 230, 230)
+THEME = "light"
 
 
 class Widget:
@@ -21,10 +25,16 @@ class Widget:
 
     def handle_event(self, event):
         return False
+        self.resizing = False
+        self.resize_dir = None  # 'n','s','e','w','ne','nw','se','sw'
+        self.min_width = 120
+        self.min_height = 40
 
     def draw(self, surf):
         pass
 
+
+        self.resize_margin = 8
 
 class Button(Widget):
     def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None):
@@ -50,7 +60,6 @@ class Button(Widget):
         txt = FONT.render(self.text, True, TEXT)
         surf.blit(txt, txt.get_rect(center=self.rect.center))
 
-
 class Checkbox(Widget):
     def __init__(self, rect: pygame.Rect, checked=False, on_change: Optional[Callable] = None):
         super().__init__(rect)
@@ -72,7 +81,6 @@ class Checkbox(Widget):
         if self.checked:
             inner = self.rect.inflate(-6, -6)
             pygame.draw.rect(surf, ACCENT, inner, border_radius=3)
-
 
 class Slider(Widget):
     def __init__(self, rect: pygame.Rect, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None):
@@ -212,16 +220,29 @@ class TextInput(Widget):
 
 
 class Window:
-    def __init__(self, rect: pygame.Rect, title: str = "Window"):
-        self.rect = rect
+    def __init__(self, x ,y,w,h, title: str = "Window"):
+        self.rect = pygame.Rect(x, y, w, h)
         self.title = title
         self.visible = True
         self.minimized = False
         self.dragging = False
         self.offset = (0, 0)
         self.widgets = []
+        self.isMain = False
+        self.resizing = False
+        self.resize_dir = None  # 'n','s','e','w','ne','nw','se','sw'
+        self.min_width = 200
+        self.min_height = 100
+        self.resize_margin = 5
+
+
+        # Check if this window is a Main window
+        if self.title.lower() == "main window":
+            self.isMain = True
+
         # control buttons
-        self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
+        if not self.isMain:
+            self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
         self.min_btn = Button(pygame.Rect(0, 0, 28, 20), "_", self._minimize)
 
     def add(self, widget: Widget):
@@ -268,27 +289,99 @@ class Window:
         # header area
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
         # place control buttons
-        self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
+        if not self.isMain:
+            self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
         self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
         # give controls priority so they receive clicks before drag
-        if self.close_btn.handle_event(event):
-            return True
-        if self.min_btn.handle_event(event):
-            return True
+        if not self.isMain:
+            if getattr(self, 'show_close', True):
+                if self.close_btn.handle_event(event):
+                    return True
+        if getattr(self, 'show_min', True):
+            if self.min_btn.handle_event(event):
+                # print("Minimize button clicked")
+                return True
 
+        # if not self.minimized:
+        # detect resize start (edges/corners)
+        mx, my = None, None
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            mx, my = event.pos
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if header.collidepoint(event.pos):
+            if not self.minimized:
+                # check corners/edges
+                r = self.rect
+                left = mx - r.x
+                top = my - r.y
+                right = r.right - mx
+                bottom = r.bottom - my
+                dir = None
+                if left <= self.resize_margin and top <= self.resize_margin:
+                    dir = 'nw'
+                elif right <= self.resize_margin and top <= self.resize_margin:
+                    dir = 'ne'
+                elif left <= self.resize_margin and bottom <= self.resize_margin:
+                    dir = 'sw'
+                elif right <= self.resize_margin and bottom <= self.resize_margin:
+                    dir = 'se'
+                # elif top <= self.resize_margin:
+                #     dir = 'n'
+                elif bottom <= self.resize_margin:
+                    dir = 's'
+                elif left <= self.resize_margin:
+                    dir = 'w'
+                elif right <= self.resize_margin:
+                    dir = 'e'
+                if dir:
+                    self.resizing = True
+                    self.resize_dir = dir
+                    self.offset = (mx, my)
+                    return True
+            if header.collidepoint((mx, my)):
                 # start dragging only if not clicking a control
                 self.dragging = True
-                self.offset = (event.pos[0] - self.rect.x, event.pos[1] - self.rect.y)
+                self.offset = (mx - self.rect.x, my - self.rect.y)
                 return True
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging = False
+            self.resizing = False
+            self.resize_dir = None
         elif event.type == pygame.MOUSEMOTION:
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
                 return True
+            if self.resizing and self.resize_dir:
+                mx, my = event.pos
+                dx = mx - self.offset[0]
+                dy = my - self.offset[1]
+                r = self.rect
+                if 'e' in self.resize_dir:
+                    new_w = max(self.min_width, r.width + dx)
+                    r.width = new_w
+                    self.offset = (mx, self.offset[1])
+                if 's' in self.resize_dir:
+                    new_h = max(self.min_height, r.height + dy)
+                    r.height = new_h
+                    self.offset = (self.offset[0], my)
+                if 'w' in self.resize_dir:
+                    # move left edge
+                    new_x = r.x + dx
+                    new_w = max(self.min_width, r.right - new_x)
+                    if new_w != r.width:
+                        r.x = r.right - new_w
+                        r.width = new_w
+                        self.offset = (mx, self.offset[1])
+                # if 'n' in self.resize_dir:
+                #     new_y = r.y + dy
+                #     new_h = max(self.min_height, r.bottom - new_y)
+                #     if new_h != r.height:
+                #         r.y = r.bottom - new_h
+                #         r.height = new_h
+                #         self.offset = (self.offset[0], my)
+                return True
+
+        
 
         if self.minimized:
             return False
@@ -309,28 +402,162 @@ class Window:
     def draw(self, surf):
         if not self.visible:
             return
+        # select colors per theme
+        bg = WINDOW_BG if THEME == "light" else DARK_WINDOW_BG
+        text_col = TEXT if THEME == "light" else DARK_TEXT
+        border_col = BORDER if THEME == "light" else (50, 50, 55)
+
         # window body
-        pygame.draw.rect(surf, WINDOW_BG, self.rect, border_radius=10)
-        pygame.draw.rect(surf, BORDER, self.rect, 1, border_radius=10)
+        if not self.minimized:
+            pygame.draw.rect(surf, bg, self.rect, border_radius=10)
+            pygame.draw.rect(surf, border_col, self.rect, 1, border_radius=10)
         # header
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
-        pygame.draw.rect(surf, (245, 245, 248), header, border_radius=10)
+        header_col = (245, 245, 248) if THEME == "light" else (40, 40, 44)
+        pygame.draw.rect(surf, header_col, header, border_radius=10)
         # title
-        title_s = FONT.render(self.title, True, TEXT)
+        title_s = FONT.render(self.title, True, text_col)
         surf.blit(title_s, (self.rect.x + 10, self.rect.y + 6))
-        # controls
-        # draw controls (they use absolute rects)
-        self.close_btn.draw(surf)
-        self.min_btn.draw(surf)
-        if self.minimized:
-            return
-        # draw widgets
-        for w in self.widgets:
-            rel = getattr(w, '_relative_rect', w.rect)
+        # controls (draw icons ourselves for consistent look)
+        if not self.isMain:
+            if getattr(self, 'show_close', True):
+                self._draw_control_icon(surf, self.close_btn.rect, "close")
+        if getattr(self, 'show_min', True):
+            self._draw_control_icon(surf, self.min_btn.rect, "min")
+        if not self.minimized:
+            # draw widgets
+            for w in self.widgets:
+                rel = getattr(w, '_relative_rect', w.rect)
+                abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
+                orig = w.rect
+                w.rect = abs_rect
+                try:
+                    w.draw(surf)
+                finally:
+                    w.rect = orig
+            # draw resize grip
+            grip_rect = pygame.Rect(self.rect.right - 12, self.rect.bottom - 12, 10, 10)
+            pygame.draw.rect(surf, (200, 200, 200), grip_rect)
+
+    def _draw_control_icon(self, surf, rect, kind: str):
+        # background
+        pygame.draw.rect(surf, WINDOW_BG if THEME == "light" else DARK_WINDOW_BG, rect, border_radius=6)
+        pygame.draw.rect(surf, BORDER if THEME == "light" else (60, 60, 65), rect, 1, border_radius=6)
+        cx = rect.centerx
+        cy = rect.centery
+        if kind == "close":
+            # draw an X
+            pygame.draw.line(surf, (200, 60, 60), (cx - 6, cy - 6), (cx + 6, cy + 6), 2)
+            pygame.draw.line(surf, (200, 60, 60), (cx + 6, cy - 6), (cx - 6, cy + 6), 2)
+        elif kind == "min":
+            pygame.draw.line(surf, (100, 100, 110), (cx - 6, cy + 3), (cx + 6, cy + 3), 2)
+
+
+
+
+
+class MasterWindow(Window):
+    """A window that can host other windows as embedded child windows."""
+    def __init__(self, rect: pygame.Rect, title: str = "Master", window_class: str = None, class_props: dict = None):
+        super().__init__(rect, title)
+        self.child_windows = []
+        self.managed_windows = []  # list of (window, name, button)
+        # master shouldn't be closeable
+        self.show_close = False
+        # window class and default properties for child windows
+        self.window_class = window_class
+        self.class_props = class_props or {}
+
+    def add_window(self, window: Window, x: int, y: int):
+        # position window relative to master and add to children list
+        window.rect.x = self.rect.x + x
+        window.rect.y = self.rect.y + y
+        # inherit window_class if not set
+        if getattr(window, 'window_class', None) is None and self.window_class is not None:
+            window.window_class = self.window_class
+        # apply class_props defaults where the window doesn't explicitly set them
+        for k, v in self.class_props.items():
+            if not hasattr(window, k) or getattr(window, k) is None:
+                setattr(window, k, v)
+        self.child_windows.append(window)
+
+    def manage_window(self, window: Window, name: str):
+        """Add a managed window with a toggle button in the master window header area."""
+        # create a small button inside master to toggle visibility
+        btn_w = 100
+        btn_h = 22
+        # position buttons stacked from left in the header area
+        x_off = 10 + len(self.managed_windows) * (btn_w + 6)
+        # button rect (absolute for initial creation)
+        btn_rect = pygame.Rect(self.rect.x + x_off, self.rect.y + 4, btn_w, btn_h)
+        def toggle(win=window):
+            win.visible = not win.visible
+            # if making visible, bring to front
+            if win.visible and win in self.child_windows:
+                try:
+                    idx = self.child_windows.index(win)
+                    self.child_windows.append(self.child_windows.pop(idx))
+                except ValueError:
+                    pass
+
+        # create a Button (do not add to master.widgets) and store a relative rect
+        btn = Button(btn_rect, name, toggle)
+        btn._relative_rect = pygame.Rect(x_off, 4, btn_w, btn_h)
+        self.managed_windows.append((window, name, btn))
+
+    def handle_event(self, event):
+        if not self.visible:
+            return False
+        # first, allow managed buttons to handle events
+        for _, _, btn in self.managed_windows:
+            # compute absolute rect for button based on master position
+            rel = btn._relative_rect
             abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
-            orig = w.rect
-            w.rect = abs_rect
+            orig = btn.rect
+            btn.rect = abs_rect
             try:
-                w.draw(surf)
+                if btn.handle_event(event):
+                    return True
             finally:
-                w.rect = orig
+                btn.rect = orig
+
+        # translate event coordinates into child window space and forward
+        for cw in reversed(self.child_windows):
+            if cw.handle_event(event):
+                # bring clicked child to front (z-order) by moving it to end
+                try:
+                    idx = self.child_windows.index(cw)
+                    self.child_windows.append(self.child_windows.pop(idx))
+                except ValueError:
+                    pass
+                return True
+        # fallback to normal window behavior
+        return super().handle_event(event)
+
+    def draw(self, surf):
+        # draw master body and then draw child windows clipped inside
+        super().draw(surf)
+        # draw managed buttons at top-left area
+        for _, _, btn in self.managed_windows:
+            # draw using relative rect (translate)
+            orig = btn.rect
+            btn.rect = pygame.Rect(self.rect.x + btn._relative_rect.x, self.rect.y + btn._relative_rect.y, btn._relative_rect.width, btn._relative_rect.height)
+            try:
+                btn.draw(surf)
+            finally:
+                btn.rect = orig
+        for cw in self.child_windows:
+            cw.draw(surf)
+
+
+def set_theme(name: str):
+    global THEME, WINDOW_BG, TEXT
+    if name not in ("light", "dark"):
+        return
+    THEME = name
+    if THEME == "dark":
+        WINDOW_BG = DARK_WINDOW_BG
+        TEXT = DARK_TEXT
+    else:
+        WINDOW_BG = (255, 255, 255)
+        TEXT = (30, 30, 30)
