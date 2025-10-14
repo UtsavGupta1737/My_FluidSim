@@ -277,29 +277,26 @@ class Window(Widget):
     # def layout_widget(self, widget, row, col):
     #     self.layout.add_widget(widget, row, col)
 
-    # convenience factory helpers that create widgets using coordinates relative to the window
-    def add_button(self, x: int, y: int, w: int, h: int, text: str, on_click: Optional[Callable] = None) -> Button:
-        rect = pygame.Rect(self.rect.x + x, self.rect.y + y, w, h)
-        btn = Button(rect, text, on_click)
-        self.add(btn)
+    # convenience factory helpers that create widgets using grid layout
+    def add_button(self, row: int, col: int, text: str, on_click: Optional[Callable] = None) -> Button:
+        # initialy making a dummy rect, will be updated by layout
+        btn = Button(pygame.Rect(0,0,1,1), text, on_click)
+        self.layout.add_widget(btn,row,col)
         return btn
 
-    def add_checkbox(self, x: int, y: int, w: int, h: int, checked: bool = False, on_change: Optional[Callable] = None) -> Checkbox:
-        rect = pygame.Rect(self.rect.x + x, self.rect.y + y, w, h)
-        chk = Checkbox(rect, checked=checked, on_change=on_change)
-        self.add(chk)
+    def add_checkbox(self, row: int, col: int, checked: bool = False, on_change: Optional[Callable] = None) -> Checkbox:
+        chk = Checkbox(pygame.Rect(0, 0, 1, 1), checked=checked, on_change=on_change)
+        self.layout.add_widget(chk, row, col)
         return chk
 
-    def add_slider(self, x: int, y: int, w: int, h: int, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None) -> Slider:
-        rect = pygame.Rect(self.rect.x + x, self.rect.y + y, w, h)
-        s = Slider(rect, min_val, max_val, value, on_change=on_change)
-        self.add(s)
+    def add_slider(self, row: int, col: int, min_val: float, max_val: float, value: float, on_change: Optional[Callable] = None) -> Slider:
+        s = Slider(pygame.Rect(0, 0, 1, 1), min_val, max_val, value, on_change=on_change)
+        self.layout.add_widget(s, row, col)
         return s
 
-    def add_textinput(self, x: int, y: int, w: int, h: int, text: str = "", on_change: Optional[Callable] = None) -> TextInput:
-        rect = pygame.Rect(self.rect.x + x, self.rect.y + y, w, h)
-        t = TextInput(rect, text=text, on_change=on_change)
-        self.add(t)
+    def add_textinput(self, row: int, col: int, text: str = "", on_change: Optional[Callable] = None) -> TextInput:
+        t = TextInput(pygame.Rect(0, 0, 1, 1), text=text, on_change=on_change)
+        self.layout.add_widget(t, row, col)
         return t
 
     def _close(self):
@@ -391,14 +388,15 @@ class Window(Widget):
         # Mouse movement
         elif event.type == pygame.MOUSEMOTION:
 
+            # updating the layout rect
+            self.layout.update_positions(self.rect)
+
             # Dragging
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
                 # keep window on screen
                 self.clamp_to_screen()
-                # updating the layout rect
-                self.layout.update_positions(self.rect)
                 # update control icons immediately
                 if not self.isMain:
                     self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
@@ -430,26 +428,6 @@ class Window(Widget):
                 # clamp after resizing
                 self.clamp_to_screen()
                 return True
-
-        
-
-        if self.minimized:
-            return False
-
-        # translate widget events to absolute coords and forward
-        for w in self.widgets:
-            if isinstance(w, Window):
-                continue
-            rel = getattr(w, '_relative_rect', w.rect)
-            abs_rect = pygame.Rect(self.rect.x + rel.x, self.rect.y + rel.y, rel.width, rel.height)
-            orig = w.rect
-            w.rect = abs_rect
-            try:
-                if w.handle_event(event):
-                    return True
-            finally:
-                w.rect = orig
-        return False
 
     def draw(self, surf):
         if not self.visible:
@@ -527,9 +505,10 @@ class GridLayout:
     def update_positions(self,Rect=None):
         # print(f"Drawing GridLayout at {self.rect} with {self.rows} rows and {self.cols} cols")
 
-        # update layout rect to match parent window size
+        # update layout rect to match parent window size 
+        # NOTE: We have to consider header height (28px) and some margin
         if Rect is not None:
-            self.rect = Rect
+            self.rect = pygame.Rect(Rect.x, Rect.y + 28, Rect.width, Rect.height - 28)
 
         # Calculate cell dimensions
         cell_width = self.rect.width / self.cols
