@@ -2,21 +2,31 @@ import pygame
 from typing import Tuple, Callable, Optional
 
 pygame.init()
-FONT = pygame.font.SysFont("Segoe UI", 16)
-SMALL_FONT = pygame.font.SysFont("Segoe UI", 14)
 
-# Basic colors inspired by Win11 soft palette
-BG = (243, 244, 246)
-WINDOW_BG = (255, 255, 255)
-ACCENT = (79, 70, 229)
-TEXT = (30, 30, 30)
-SUBTEXT = (100, 100, 110)
-BORDER = (200, 200, 200)
-DARK_BG = (18, 18, 20)
-DARK_WINDOW_BG = (28, 28, 30)
-DARK_TEXT = (230, 230, 230)
-THEME = "light"
-
+def set_theme(name: str):
+    global THEME, WINDOW_BG, DARK_WINDOW_BG, TEXT, DARK_TEXT, SUBTEXT, BORDER, ACCENT, FONT, SMALL_FONT
+    THEME = name
+    if name == "light":
+        WINDOW_BG = (250, 250, 255)
+        DARK_WINDOW_BG = (30, 30, 35)
+        TEXT = (30, 30, 30)
+        DARK_TEXT = (220, 220, 230)
+        SUBTEXT = (100, 100, 120)
+        BORDER = (200, 200, 210)
+        ACCENT = (0, 120, 215)
+    elif name == "dark":
+        WINDOW_BG = (40, 40, 44)
+        DARK_WINDOW_BG = (250, 250, 255)
+        TEXT = (220, 220, 230)
+        DARK_TEXT = (30, 30, 30)
+        SUBTEXT = (150, 150, 170)
+        BORDER = (60, 60, 65)
+        ACCENT = (10, 130, 255)
+    else:
+        raise ValueError("Theme must be 'light' or 'dark'")
+    
+    FONT = pygame.font.SysFont("Arial", 16)
+    SMALL_FONT = pygame.font.SysFont("Arial", 14)
 
 class Widget:
     def __init__(self, rect: pygame.Rect):
@@ -583,23 +593,10 @@ class GridLayout:
         for widget in self.widgets.values():
             widget.draw(surf)
 
-
-def set_theme(name: str):
-    global THEME, WINDOW_BG, TEXT
-    if name not in ("light", "dark"):
-        return
-    THEME = name
-    if THEME == "dark":
-        WINDOW_BG = DARK_WINDOW_BG
-        TEXT = DARK_TEXT
-    else:
-        WINDOW_BG = (255, 255, 255)
-        TEXT = (30, 30, 30)
-
 # Master Window Manager
-class MasterWindow(Window):
-    def __init__(self,x , y, w, h, title: str = "Master Window"):
-        super().__init__(x, y, w, h, title)
+class MasterWindow(Widget):
+    def __init__(self):
+        super().__init__(pygame.Rect(0, 0, 0, 0))
         self.child_windows = []
 
     def add_child(self, child_window):

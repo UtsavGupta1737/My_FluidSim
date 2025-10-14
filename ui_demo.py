@@ -1,5 +1,5 @@
 import pygame
-from ui_components import Window, MasterWindow
+from ui_components import Window, MasterWindow, set_theme
 
 pygame.init()
 SCREEN = pygame.display.set_mode((900, 600))
@@ -9,7 +9,10 @@ FPS = 60
 font = pygame.font.SysFont("Arial", 18)
 
 # Create a master window to manage all other windows
-master_window = MasterWindow(0, 0, 600, 400, "Master")
+master_window = MasterWindow()
+
+# set Theme colors
+set_theme("dark")
 
 # Create child windows and add them to the master
 win = Window(50, 50, 400, 300, title="Window 1")
