@@ -266,7 +266,6 @@ class Window(Widget):
         self.offset = (0, 0)
         self.z = 0
         self.widgets = []
-        self.isMain = False
         self.resizing = False
         self.resize_dir = None  # 'n','s','e','w','ne','nw','se','sw'
         self.min_width = 200
@@ -274,11 +273,8 @@ class Window(Widget):
         self.resize_margin = 5
         self.Grid = (5,2)
         self.padding = 5
-
-
-        # Check if this window is a Main window
-        if self.title.lower() == "main window":
-            self.isMain = True
+        self._parent_master = None
+        self.isMain = False
 
         # control buttons
         if not self.isMain:
@@ -344,112 +340,77 @@ class Window(Widget):
     def handle_event(self, event):
         if not self.visible:
             return False
-        # header area
+            
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
-        # place control buttons
-        if not self.isMain:
-            self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
-        self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
-        # give controls priority so they receive clicks before drag
-        if not self.isMain:       
-            if self.close_btn.handle_event(event):
-                return True
-        if self.min_btn.handle_event(event):
-            return True
         
-        # pass event to layout widgets
-        if self.layout:
-            self.layout.handle_event(event)
+        # pass event to layout widgets first, so they get priority
+        if self.layout and self.layout.handle_event(event):
+            return True
 
-        # detect resize start (edges/corners)
-        mx, my = None, None
-        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
-            mx, my = event.pos
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Checking mouse pos for resize
-            if not self.minimized:
-                # check corners/edges
-                r = self.rect
-                left = mx - r.x
-                top = my - r.y
-                right = r.right - mx
-                bottom = r.bottom - my
-                dir = None
-                if left <= self.resize_margin and top <= self.resize_margin:
-                    dir = 'nw'
-                elif right <= self.resize_margin and top <= self.resize_margin:
-                    dir = 'ne'
-                elif left <= self.resize_margin and bottom <= self.resize_margin:
-                    dir = 'sw'
-                elif right <= self.resize_margin and bottom <= self.resize_margin:
-                    dir = 'se'
-                # elif top <= self.resize_margin:
-                #     dir = 'n'
-                elif bottom <= self.resize_margin:
-                    dir = 's'
-                elif left <= self.resize_margin:
-                    dir = 'w'
-                elif right <= self.resize_margin:
-                    dir = 'e'
-                if dir:
-                    self.resizing = True
-                    self.resize_dir = dir
-                    self.offset = (mx, my)
-                    return True
- 
-            # Checking mouse pos for drag
-            if header.collidepoint((mx, my)):
-                # start dragging only if not clicking a control
+            mx, my = event.pos
+            # 1. Check if the user clicked on a resize border
+            r = self.rect
+            left_margin = pygame.Rect(r.x, r.y, self.resize_margin, r.height)
+            right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
+            top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
+            bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
+            
+            if left_margin.collidepoint(mx, my): self.resize_dir = 'w'
+            elif right_margin.collidepoint(mx, my): self.resize_dir = 'e'
+            elif top_margin.collidepoint(mx, my): self.resize_dir = 'n'
+            elif bottom_margin.collidepoint(mx, my): self.resize_dir = 's'
+            
+            if self.resize_dir:
+                self.resizing = True
+                self.offset = (mx, my)
+                return True
+                
+            # 2. Check if the user clicked on the header for dragging
+            if header.collidepoint(mx, my):
                 self.dragging = True
                 self.offset = (mx - self.rect.x, my - self.rect.y)
                 return True
 
-        # Reseting resize state on mouse down outside header
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             self.dragging = False
             self.resizing = False
             self.resize_dir = None
 
-        # Mouse movement
         elif event.type == pygame.MOUSEMOTION:
-
-            # Dragging
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
-                # keep window on screen
                 self.clamp_to_screen()
-                # update control icons immediately
-                if not self.isMain:
-                    self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
-                self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
                 return True
             
-            # Resizing
             if self.resizing and self.resize_dir:
                 mx, my = event.pos
                 dx = mx - self.offset[0]
                 dy = my - self.offset[1]
                 r = self.rect
+                
                 if 'e' in self.resize_dir:
-                    new_w = max(self.min_width, r.width + dx)
-                    r.width = new_w
-                    self.offset = (mx, self.offset[1])
+                    r.width = max(self.min_width, r.width + dx)
                 if 's' in self.resize_dir:
-                    new_h = max(self.min_height, r.height + dy)
-                    r.height = new_h
-                    self.offset = (self.offset[0], my)
+                    r.height = max(self.min_height, r.height + dy)
                 if 'w' in self.resize_dir:
-                    # move left edge
                     new_x = r.x + dx
                     new_w = max(self.min_width, r.right - new_x)
                     if new_w != r.width:
                         r.x = r.right - new_w
                         r.width = new_w
-                        self.offset = (mx, self.offset[1])
-                # clamp after resizing
+                if 'n' in self.resize_dir:
+                    new_y = r.y + dy
+                    new_h = max(self.min_height, r.bottom - new_y)
+                    if new_h != r.height:
+                        r.y = r.bottom - new_h
+                        r.height = new_h
+                
+                self.offset = (mx, my)
                 self.clamp_to_screen()
                 return True
+        return False
 
     def draw(self, surf):
         if not self.visible:
@@ -504,7 +465,7 @@ class Window(Widget):
         elif kind == "min":
             pygame.draw.circle(surf, (255,234,0), circle_center, circle_radius)
 
-
+# Grid Layout Manager
 class GridLayout:
     def __init__(self, rect, rows, cols, padding=0):
         self.rect = rect
@@ -580,3 +541,41 @@ def set_theme(name: str):
     else:
         WINDOW_BG = (255, 255, 255)
         TEXT = (30, 30, 30)
+
+# Master Window Manager
+class MasterWindow(Window):
+    def __init__(self,x , y, w, h, title: str = "Master Window"):
+        super().__init__(x, y, w, h, title)
+        self.child_windows = []
+        self.isMain = True
+
+    def add_child(self, child_window):
+        # Set a reference to the parent for z-ordering
+        child_window._parent_master = self
+        self.child_windows.append(child_window)
+
+    def handle_event(self, event):
+        # We handle events for the master window first
+        super().handle_event(event)
+        
+        # Then, we iterate through children in reverse for z-ordering
+        for child in reversed(self.child_windows):
+            if child.handle_event(event):
+                # If a child window handled the event, we stop.
+                # This ensures clicks go to the top window.
+                return True
+        return False
+
+    def draw(self, surf):
+        # First draw the master window itself
+        super().draw(surf)
+        
+        # Then, draw all child windows
+        for child in self.child_windows:
+            child.draw(surf)
+
+
+
+
+
+
