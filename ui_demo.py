@@ -8,6 +8,7 @@ clock = pygame.time.Clock()
 
 # Create a sample window
 win = Window(50, 50, 400, 300, title="Main Window")
+# win2 = Window(100, 50, 400, 300, title="Window 2")
 
 
 running = True
@@ -18,11 +19,13 @@ while running:
             running = False
         else:
             win.handle_event(event)
+            # win2.handle_event(event)
             
 
     SCREEN.fill((0, 0, 0))
 
     win.draw(SCREEN)
+    # win2.draw(SCREEN)
     
 
     pygame.display.flip()

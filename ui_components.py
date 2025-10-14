@@ -37,10 +37,25 @@ class Widget:
         self.resize_margin = 8
 
 class Button(Widget):
-    def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None):
+    def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None, target_window: Optional[object] = None):
         super().__init__(rect)
         self.text = text
         self.on_click = on_click
+        self.target_window = target_window
+        # if a target window is supplied and no on_click, create a toggle handler
+        if self.on_click is None and self.target_window is not None:
+            def _toggle(win=self.target_window):
+                win.visible = not win.visible
+                # if this window is managed by a MasterWindow, bring it to front when shown
+                parent = getattr(win, '_parent_master', None)
+                if parent is not None and hasattr(parent, 'child_windows'):
+                    try:
+                        idx = parent.child_windows.index(win)
+                        # move to end to render on top
+                        parent.child_windows.append(parent.child_windows.pop(idx))
+                    except ValueError:
+                        pass
+            self.on_click = _toggle
         self.hover = False
 
     def handle_event(self, event):
@@ -218,8 +233,8 @@ class TextInput(Widget):
                 cx = self.rect.x + 8 + pre.get_width()
                 pygame.draw.line(surf, TEXT, (cx, self.rect.y + 6), (cx, self.rect.y + self.rect.height - 6), 2)
 
-
-class Window:
+# Final Window class 
+class Window(Widget):
     def __init__(self, x ,y,w,h, title: str = "Window"):
         self.rect = pygame.Rect(x, y, w, h)
         self.title = title
@@ -227,6 +242,7 @@ class Window:
         self.minimized = False
         self.dragging = False
         self.offset = (0, 0)
+        self.z = 0
         self.widgets = []
         self.isMain = False
         self.resizing = False
@@ -283,6 +299,21 @@ class Window:
     def _minimize(self):
         self.minimized = not self.minimized
 
+    def clamp_to_screen(self):
+        """Ensure the window stays fully inside the pygame display surface."""
+        surf = pygame.display.get_surface()
+        if surf is None:
+            return
+        sw, sh = surf.get_size()
+        # clamp size
+        if self.rect.width > sw:
+            self.rect.width = sw
+        if self.rect.height > sh:
+            self.rect.height = sh
+        # clamp position
+        self.rect.x = max(0, min(self.rect.x, sw - self.rect.width))
+        self.rect.y = max(0, min(self.rect.y, sh - self.rect.height))
+
     def handle_event(self, event):
         if not self.visible:
             return False
@@ -293,14 +324,11 @@ class Window:
             self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
         self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
         # give controls priority so they receive clicks before drag
-        if not self.isMain:
-            if getattr(self, 'show_close', True):
-                if self.close_btn.handle_event(event):
-                    return True
-        if getattr(self, 'show_min', True):
-            if self.min_btn.handle_event(event):
-                # print("Minimize button clicked")
+        if not self.isMain:       
+            if self.close_btn.handle_event(event):
                 return True
+        if self.min_btn.handle_event(event):
+            return True
 
         # if not self.minimized:
         # detect resize start (edges/corners)
@@ -350,6 +378,12 @@ class Window:
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
+                # keep window on screen
+                self.clamp_to_screen()
+                # update control icons immediately
+                if not self.isMain:
+                    self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
+                self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
                 return True
             if self.resizing and self.resize_dir:
                 mx, my = event.pos
@@ -379,6 +413,8 @@ class Window:
                 #         r.y = r.bottom - new_h
                 #         r.height = new_h
                 #         self.offset = (self.offset[0], my)
+                # clamp after resizing
+                self.clamp_to_screen()
                 return True
 
         
@@ -413,16 +449,18 @@ class Window:
             pygame.draw.rect(surf, border_col, self.rect, 1, border_radius=10)
         # header
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
-        header_col = (245, 245, 248) if THEME == "light" else (40, 40, 44)
+        header_col = (220, 220, 248) if THEME == "light" else (40, 40, 44)
         pygame.draw.rect(surf, header_col, header, border_radius=10)
         # title
         title_s = FONT.render(self.title, True, text_col)
-        surf.blit(title_s, (self.rect.x + 10, self.rect.y + 6))
-        # controls (draw icons ourselves for consistent look)
+        surf.blit(title_s, (self.rect.x + 10, self.rect.y + 3))
+        # ensure control icon rects are always computed from current rect (prevents lag)
         if not self.isMain:
             if getattr(self, 'show_close', True):
+                self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
                 self._draw_control_icon(surf, self.close_btn.rect, "close")
         if getattr(self, 'show_min', True):
+            self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
             self._draw_control_icon(surf, self.min_btn.rect, "min")
         if not self.minimized:
             # draw widgets
@@ -441,17 +479,17 @@ class Window:
 
     def _draw_control_icon(self, surf, rect, kind: str):
         # background
-        pygame.draw.rect(surf, WINDOW_BG if THEME == "light" else DARK_WINDOW_BG, rect, border_radius=6)
-        pygame.draw.rect(surf, BORDER if THEME == "light" else (60, 60, 65), rect, 1, border_radius=6)
-        cx = rect.centerx
-        cy = rect.centery
+        # Calculate the circle's center and radius from the rect
+        circle_center = rect.center
+        circle_radius = min(rect.width, rect.height) // 2
+        # pygame.draw.rect(surf, WINDOW_BG if THEME == "light" else DARK_WINDOW_BG, rect, border_radius=6)
+        # pygame.draw.rect(surf, BORDER if THEME == "light" else (60, 60, 65), rect, 1, border_radius=6)
+        # cx = rect.centerx
+        # cy = rect.centery
         if kind == "close":
-            # draw an X
-            pygame.draw.line(surf, (200, 60, 60), (cx - 6, cy - 6), (cx + 6, cy + 6), 2)
-            pygame.draw.line(surf, (200, 60, 60), (cx + 6, cy - 6), (cx - 6, cy + 6), 2)
+            pygame.draw.circle(surf, (255,0,0), circle_center, circle_radius) 
         elif kind == "min":
-            pygame.draw.line(surf, (100, 100, 110), (cx - 6, cy + 3), (cx + 6, cy + 3), 2)
-
+            pygame.draw.circle(surf, (255,234,0), circle_center, circle_radius)
 
 
 
@@ -472,6 +510,10 @@ class MasterWindow(Window):
         # position window relative to master and add to children list
         window.rect.x = self.rect.x + x
         window.rect.y = self.rect.y + y
+        # store relative rect so child follows master when master moves
+        window._relative_rect = pygame.Rect(x, y, window.rect.width, window.rect.height)
+        # allow child to know its parent master (used by toggle helpers)
+        setattr(window, '_parent_master', self)
         # inherit window_class if not set
         if getattr(window, 'window_class', None) is None and self.window_class is not None:
             window.window_class = self.window_class
@@ -523,6 +565,11 @@ class MasterWindow(Window):
 
         # translate event coordinates into child window space and forward
         for cw in reversed(self.child_windows):
+            # ensure child's absolute position is updated from relative rect
+            if hasattr(cw, '_relative_rect'):
+                rel = cw._relative_rect
+                cw.rect.x = self.rect.x + rel.x
+                cw.rect.y = self.rect.y + rel.y
             if cw.handle_event(event):
                 # bring clicked child to front (z-order) by moving it to end
                 try:
@@ -547,6 +594,11 @@ class MasterWindow(Window):
             finally:
                 btn.rect = orig
         for cw in self.child_windows:
+            # update child absolute pos from relative rect before drawing
+            if hasattr(cw, '_relative_rect'):
+                rel = cw._relative_rect
+                cw.rect.x = self.rect.x + rel.x
+                cw.rect.y = self.rect.y + rel.y
             cw.draw(surf)
 
 
