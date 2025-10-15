@@ -11,6 +11,8 @@ font = pygame.font.SysFont("Arial", 18)
 # Create a master window to manage all other windows
 master_window = MasterWindow()
 
+
+
 # set Theme colors
 set_theme("light")
 
@@ -30,6 +32,7 @@ win.add_slider(2, 0, "Volume", 0, 100, 50)
 win.add_slider(2, 1, "Brightness", 0, 100, 50)
 win.add_textinput(3, 0, "Name", lambda v: print(v))
 win.add_textinput(3, 1, "Age", lambda v: print(v))
+
 
 
 
