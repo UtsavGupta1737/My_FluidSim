@@ -12,7 +12,7 @@ font = pygame.font.SysFont("Arial", 18)
 master_window = MasterWindow()
 
 # set Theme colors
-set_theme("dark")
+set_theme("light")
 
 # Create child windows and add them to the master
 win = Window(50, 50, 400, 300, title="Window 1")
@@ -22,15 +22,14 @@ master_window.add_child(win)
 master_window.add_child(win2)
 
 # Now, add widgets to the child windows
-win.add_button(0, 0, "Click Me", lambda: print("Button 1 clicked"))
-win.add_button(0, 1, "Click Me", lambda: print("Button 2 clicked"))
+win.add_button(0, 0, "Click Me",lambda: set_theme())
+win.add_button(0, 1, "Click Me", lambda: win2._close())
 win.add_checkbox(1, 0, "Tick Me", on_change=lambda v: print(f"Checkbox: {v}"))
 win.add_checkbox(1, 1, "Don't Tick Me", on_change=lambda v: print(f"Checkbox: {v}"))
 win.add_slider(2, 0, "Volume", 0, 100, 50)
 win.add_slider(2, 1, "Brightness", 0, 100, 50)
-win.add_textinput(3, 0, "Name")
-win.add_textinput(3, 1, "Age")
-
+win.add_textinput(3, 0, "Name", lambda v: print(v))
+win.add_textinput(3, 1, "Age", lambda v: print(v))
 
 
 

@@ -3,30 +3,40 @@ from typing import Tuple, Callable, Optional
 
 pygame.init()
 
-def set_theme(name: str):
-    global THEME, WINDOW_BG, DARK_WINDOW_BG, TEXT, DARK_TEXT, SUBTEXT, BORDER, ACCENT, FONT, SMALL_FONT
-    THEME = name
-    if name == "light":
-        WINDOW_BG = (250, 250, 255)
-        DARK_WINDOW_BG = (30, 30, 35)
-        TEXT = (30, 30, 30)
-        DARK_TEXT = (220, 220, 230)
-        SUBTEXT = (100, 100, 120)
-        BORDER = (200, 200, 210)
+def set_theme(name: str = None):
+    global THEME, WINDOW_BG, TEXT, SUBTEXT, BORDER, ACCENT, FONT, SMALL_FONT, HEADER
+    if name in ["light", "dark"]:
+        THEME = name
+    else:   
+        # Toggle theme to apply colors
+        if THEME == "light":
+            THEME = "dark"      
+        else:
+            THEME = "light"
+
+
+    
+    if THEME == "light":
+        THEME = "light"
+        WINDOW_BG = (255, 255, 255)
+        TEXT = (0, 0, 0)
+        SUBTEXT = (102, 102, 102)
+        BORDER = (179, 179, 179)
         ACCENT = (0, 120, 215)
-    elif name == "dark":
+        HEADER = (176, 176, 176)
+    elif THEME == "dark":
+        THEME = "dark"
         WINDOW_BG = (40, 40, 44)
-        DARK_WINDOW_BG = (250, 250, 255)
         TEXT = (220, 220, 230)
-        DARK_TEXT = (30, 30, 30)
-        SUBTEXT = (150, 150, 170)
+        SUBTEXT = (153, 153, 163)
         BORDER = (60, 60, 65)
         ACCENT = (10, 130, 255)
-    else:
-        raise ValueError("Theme must be 'light' or 'dark'")
+        HEADER = (60, 60, 65)
     
     FONT = pygame.font.SysFont("Arial", 16)
     SMALL_FONT = pygame.font.SysFont("Arial", 14)
+
+    
 
 class Widget:
     def __init__(self, rect: pygame.Rect):
@@ -77,11 +87,11 @@ class Button(Widget):
     def draw(self, surf):
         # Determine color based on state
         if self.clicked:
-            color = (190, 190, 200)
+            color = ACCENT
         elif self.hover:
-            color = (230, 230, 250)
+            color = BORDER
         else:
-            color = (245, 245, 250)
+            color = WINDOW_BG
             
         pygame.draw.rect(surf, color, self.rect, border_radius=8)
         pygame.draw.rect(surf, BORDER, self.rect, 1, border_radius=8)
@@ -94,6 +104,7 @@ class Checkbox(Widget):
         self.checked = False
         self.on_change = on_change
         self.text = text
+        self.hover = False
 
         # create a text box inside the checkbox for label
         self.txt_rect = pygame.Rect(0,0,10,10)
@@ -104,6 +115,9 @@ class Checkbox(Widget):
         self.box_rect = pygame.Rect(0,0,5,5)
         
     def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.hover = self.box_rect.collidepoint(event.pos)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.box_rect.collidepoint(event.pos):
                 self.checked = not self.checked
@@ -122,6 +136,8 @@ class Checkbox(Widget):
         self.box_size = min(self.rect.height - 10, 20)
         self.box_rect = pygame.Rect(self.rect.x + 5, self.rect.y + (self.rect.height - self.box_size) // 2, self.box_size, self.box_size)
 
+        if self.hover:
+            pygame.draw.rect(surf, BORDER, self.box_rect.inflate(4, 4), border_radius=4)
 
         pygame.draw.rect(surf, WINDOW_BG, self.box_rect)
         pygame.draw.rect(surf, BORDER, self.box_rect, 2, border_radius=4)
@@ -138,6 +154,7 @@ class Slider(Widget):
         self.on_change = on_change
         self.dragging = False
         self.text = text   
+        self.hover = False
 
     def _value_to_pos(self):
         ratio = (self.value - self.min_val) / (self.max_val - self.min_val)
@@ -161,6 +178,8 @@ class Slider(Widget):
                 self.dragging = False
                 return True
         elif event.type == pygame.MOUSEMOTION:
+            self.hover = self.rect.collidepoint(event.pos)
+            
             if self.dragging:
                 self.value = self._pos_to_value(event.pos[0])
                 if self.on_change:
@@ -171,7 +190,7 @@ class Slider(Widget):
     def draw(self, surf):
         # track
         track_rect = pygame.Rect(self.rect.x + 8, self.rect.centery + 8, self.rect.width - 16, 8)
-        pygame.draw.rect(surf, (235, 235, 240), track_rect, border_radius=4)
+        pygame.draw.rect(surf, HEADER, track_rect, border_radius=4)
         # fill
         fill_w = int((self.value - self.min_val) / (self.max_val - self.min_val) * track_rect.width)
         if fill_w > 0:
@@ -182,8 +201,11 @@ class Slider(Widget):
         pygame.draw.rect(surf, WINDOW_BG, knob, border_radius=8)
         pygame.draw.rect(surf, BORDER, knob, 1, border_radius=8)
         # value label
-        val_txt = SMALL_FONT.render(f"{self.text} : {self.value:.2f}", True, SUBTEXT)
+        val_txt = SMALL_FONT.render(f"{self.text} : {self.value:.2f}", True, TEXT)
         surf.blit(val_txt, (self.rect.x + 8, self.rect.centery-(val_txt.get_height() / 2)-8))
+        # hover effect
+        if self.hover or self.dragging:
+            pygame.draw.rect(surf, BORDER, self.rect, 1, border_radius=8)
 
 class TextInput(Widget):
     def __init__(self, rect: pygame.Rect, text: str = "", on_change: Optional[Callable] = None):
@@ -236,6 +258,8 @@ class TextInput(Widget):
             elif event.key == pygame.K_RETURN:
                 # lose focus or trigger
                 self.active = False
+                if self.on_change:
+                    self.on_change(self.text)
                 return True
             elif event.unicode:
                 self.text = self.text[:self.cursor] + event.unicode + self.text[self.cursor:]
@@ -309,7 +333,6 @@ class Window(Widget):
         # initialy making a dummy rect, will be updated by layout
         btn = Button(pygame.Rect(0,0,1,1), text, on_click)
         self.layout.add_widget(btn,row,col)
-        print(f"on_click: {on_click}")
         return btn
         
     def add_checkbox(self, row: int, col: int, text: str, on_change: Optional[Callable] = None) -> Checkbox:
@@ -374,7 +397,7 @@ class Window(Widget):
             r = self.rect
             left_margin = pygame.Rect(r.x, r.y, self.resize_margin, r.height)
             right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
-            top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
+            # top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
             bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
             se_margin = pygame.Rect(r.right, r.bottom, self.resize_margin, self.resize_margin)
             ne_margin = pygame.Rect(r.right , r.y - self.resize_margin, self.resize_margin, self.resize_margin)
@@ -384,7 +407,7 @@ class Window(Widget):
 
             if left_margin.collidepoint(mx, my): self.resize_dir = 'w'
             elif right_margin.collidepoint(mx, my): self.resize_dir = 'e'
-            elif top_margin.collidepoint(mx, my): self.resize_dir = 'n'
+            # elif top_margin.collidepoint(mx, my): self.resize_dir = 'n'
             elif bottom_margin.collidepoint(mx, my): self.resize_dir = 's'
             elif se_margin.collidepoint(mx, my): self.resize_dir = 'se'
             elif ne_margin.collidepoint(mx, my): self.resize_dir = 'ne' 
@@ -446,9 +469,9 @@ class Window(Widget):
         if not self.visible:
             return
         # select colors per theme
-        bg = WINDOW_BG if THEME == "light" else DARK_WINDOW_BG
-        text_col = TEXT if THEME == "light" else DARK_TEXT
-        border_col = BORDER if THEME == "light" else (50, 50, 55)
+        bg = WINDOW_BG 
+        text_col = TEXT 
+        border_col = BORDER 
 
         # window body
         if not self.minimized:
@@ -456,7 +479,7 @@ class Window(Widget):
             pygame.draw.rect(surf, border_col, self.rect, 1, border_radius=10)
         # header
         header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
-        header_col = (220, 220, 248) if THEME == "light" else (40, 40, 44)
+        header_col = HEADER
         pygame.draw.rect(surf, header_col, header, border_radius=10)
         # title
         title_s = FONT.render(self.title, True, text_col)
@@ -474,10 +497,6 @@ class Window(Widget):
         self.layout.update_positions(self.rect)
 
         if not self.minimized:
-            # draw resize grip
-            grip_rect = pygame.Rect(self.rect.right - 12, self.rect.bottom - 12, 10, 10)
-            pygame.draw.rect(surf, (200, 200, 200), grip_rect)
-
             # draw Widget using layout
             self.layout.draw(surf)
 
@@ -578,16 +597,16 @@ class GridLayout:
         # First, make sure widget positions are up to date
         self.update_positions()
 
-        pygame.draw.rect(surf, (240, 240, 245), self.rect,1)
+        # pygame.draw.rect(surf, BORDER, self.rect,1)
 
         # Draw a visual grid for debugging purposes (optional)
-        cell_width = self.rect.width / self.cols
-        cell_height = self.rect.height / self.rows
-        for row in range(self.rows):
-            for col in range(self.cols):
-                x = self.rect.x + col * cell_width
-                y = self.rect.y + row * cell_height
-                pygame.draw.rect(surf, (50, 50, 50), pygame.Rect(x, y, cell_width, cell_height), 1)
+        # cell_width = self.rect.width / self.cols
+        # cell_height = self.rect.height / self.rows
+        # for row in range(self.rows):
+        #     for col in range(self.cols):
+        #         x = self.rect.x + col * cell_width
+        #         y = self.rect.y + row * cell_height
+        #         pygame.draw.rect(surf, (50, 50, 50), pygame.Rect(x, y, cell_width, cell_height), 1)
 
         # Draw each widget
         for widget in self.widgets.values():
