@@ -17,7 +17,7 @@ master_window = MasterWindow()
 set_theme("light")
 
 # Create child windows and add them to the master
-win = Window(50, 50, 400, 300, title="Window 1")
+win = Window(50, 50, 400, 300, title="Main")
 win2 = Window(500, 50, 400, 300, title="Window 2")
 
 master_window.add_child(win)

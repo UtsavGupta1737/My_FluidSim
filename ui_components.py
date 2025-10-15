@@ -5,6 +5,15 @@ pygame.init()
 
 CURRENT_THEME = None
 
+
+# define some system cursors
+RESIZE_NWSE_CURSOR = pygame.cursors.Cursor(pygame.SYSTEM_CURSOR_SIZENWSE)
+RESIZE_NESW_CURSOR = pygame.cursors.Cursor(pygame.SYSTEM_CURSOR_SIZENESW)
+RESIZE_NS_CURSOR = pygame.cursors.Cursor(pygame.SYSTEM_CURSOR_SIZENS)
+RESIZE_WE_CURSOR = pygame.cursors.Cursor(pygame.SYSTEM_CURSOR_SIZEWE)
+ARROW_CURSOR = pygame.cursors.Cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+
 class Theme:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -12,16 +21,20 @@ class Theme:
 THEMES = {
     "light": Theme(
         WINDOW_BG=(255, 255, 255), TEXT=(0, 0, 0), SUBTEXT=(102, 102, 102),
-        BORDER=(179, 179, 179), ACCENT=(0, 120, 215), HEADER=(176, 176, 176)
+        BORDER=(179, 179, 179), ACCENT=(0, 120, 215), HEADER=(176, 176, 176),
+        FONT = pygame.font.SysFont("Arial", 16),
+        SMALL_FONT = pygame.font.SysFont("Arial", 14)
     ),
     "dark": Theme(
         WINDOW_BG=(40, 40, 44), TEXT=(220, 220, 230), SUBTEXT=(153, 153, 163),
-        BORDER=(60, 60, 65), ACCENT=(10, 130, 255), HEADER=(60, 60, 65)
+        BORDER=(60, 60, 65), ACCENT=(10, 130, 255), HEADER=(60, 60, 65),
+        FONT = pygame.font.SysFont("Arial", 16),
+        SMALL_FONT = pygame.font.SysFont("Arial", 14)
     )
 }
 
 def set_theme(name: str = None):
-    global CURRENT_THEME, FONT, SMALL_FONT
+    global CURRENT_THEME
     if name in ["light", "dark"]:
         CURRENT_THEME = THEMES[name]
     else:
@@ -30,9 +43,6 @@ def set_theme(name: str = None):
             CURRENT_THEME = THEMES["dark"]
         else:
             CURRENT_THEME = THEMES["light"]
-    # Re-create fonts here if needed
-    FONT = pygame.font.SysFont("Arial", 16)
-    SMALL_FONT = pygame.font.SysFont("Arial", 14)
          
 class Widget:
     def __init__(self, rect: pygame.Rect):
@@ -44,9 +54,6 @@ class Widget:
 
     def draw(self, surf):
         pass
-
-
-        self.resize_margin = 8
 
 class Button(Widget):
     def __init__(self, rect: pygame.Rect, text: str, on_click: Optional[Callable] = None):
@@ -87,7 +94,7 @@ class Button(Widget):
 
         pygame.draw.rect(surf, color, self.rect, border_radius=6)
         pygame.draw.rect(surf, CURRENT_THEME.BORDER, self.rect, 1, border_radius=6)
-        txt = FONT.render(self.text, True, CURRENT_THEME.TEXT)
+        txt = CURRENT_THEME.FONT.render(self.text, True, CURRENT_THEME.TEXT)
         surf.blit(txt, txt.get_rect(center=self.rect.center))
 
 class Checkbox(Widget):
@@ -120,7 +127,7 @@ class Checkbox(Widget):
 
     def draw(self, surf):
         # update text rect in case widget was resized
-        txt = FONT.render(self.text, True, CURRENT_THEME.TEXT)
+        txt = CURRENT_THEME.FONT.render(self.text, True, CURRENT_THEME.TEXT)
         surf.blit(txt, txt.get_rect(center=self.rect.center))
 
 
@@ -149,11 +156,15 @@ class Slider(Widget):
         self.hover = False
 
     def _value_to_pos(self):
+        track_padding = max(8, int(self.rect.width * 0.1))
+        track_width = self.rect.width - 2 * track_padding
         ratio = (self.value - self.min_val) / (self.max_val - self.min_val)
-        return int(self.rect.x + 8 + ratio * (self.rect.width - 16))
+        return int(self.rect.x + track_padding + ratio * track_width)
 
     def _pos_to_value(self, x):
-        ratio = (x - (self.rect.x + 8)) / (self.rect.width - 16)
+        track_padding = max(8, int(self.rect.width * 0.1))
+        track_width = self.rect.width - 2 * track_padding
+        ratio = (x - (self.rect.x + track_padding)) / track_width
         ratio = max(0.0, min(1.0, ratio))
         return self.min_val + ratio * (self.max_val - self.min_val)
 
@@ -180,24 +191,49 @@ class Slider(Widget):
         return False
 
     def draw(self, surf):
-        # track
-        track_rect = pygame.Rect(self.rect.x + 8, self.rect.centery + 8, self.rect.width - 16, 8)
+        # Clip drawing to the widget's rect
+        clip_rect = surf.get_clip()
+        surf.set_clip(self.rect)
+
+        # Redraw the background
+        pygame.draw.rect(surf, CURRENT_THEME.WINDOW_BG, self.rect, border_radius=6)
+
+        # Divide the rect for label and slider
+        label_height = self.rect.height // 2
+        slider_height = self.rect.height // 2
+        label_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, label_height)
+        slider_rect = pygame.Rect(self.rect.x, self.rect.y + label_height, self.rect.width, slider_height)
+
+        # Draw the label
+        val_txt = CURRENT_THEME.SMALL_FONT.render(f"{self.text} : {self.value:.2f}", True, CURRENT_THEME.TEXT)
+        val_txt_rect = val_txt.get_rect(center=label_rect.center)
+        surf.blit(val_txt, val_txt_rect)
+
+        # Draw the slider track
+        track_height = max(4, min(8, int(slider_rect.height * 0.4)))
+        track_y = slider_rect.centery
+        track_padding = max(8, int(self.rect.width * 0.1))
+        track_rect = pygame.Rect(self.rect.x + track_padding, track_y - track_height // 2, self.rect.width - 2 * track_padding, track_height)
         pygame.draw.rect(surf, CURRENT_THEME.HEADER, track_rect, border_radius=4)
-        # fill
+
+        # Draw the fill
         fill_w = int((self.value - self.min_val) / (self.max_val - self.min_val) * track_rect.width)
         if fill_w > 0:
             pygame.draw.rect(surf, CURRENT_THEME.ACCENT, (track_rect.x, track_rect.y, fill_w, track_rect.height), border_radius=4)
-        # knob
+
+        # Draw the knob
+        knob_size = max(8, min(16, track_height * 2))
         kx = self._value_to_pos()
-        knob = pygame.Rect(kx - 8, track_rect.centery - 8 , 16, 16)
-        pygame.draw.rect(surf, CURRENT_THEME.WINDOW_BG, knob, border_radius=8)
-        pygame.draw.rect(surf, CURRENT_THEME.BORDER, knob, 1, border_radius=8)
-        # value label
-        val_txt = SMALL_FONT.render(f"{self.text} : {self.value:.2f}", True, CURRENT_THEME.TEXT)
-        surf.blit(val_txt, (self.rect.x + 8, self.rect.centery-(val_txt.get_height() / 2)-8))
-        # hover effect
+        knob_rect = pygame.Rect(kx - knob_size // 2, track_y - knob_size // 2, knob_size, knob_size)
+        pygame.draw.rect(surf, CURRENT_THEME.WINDOW_BG, knob_rect, border_radius=knob_size // 2)
+        pygame.draw.rect(surf, CURRENT_THEME.BORDER, knob_rect, 1, border_radius=knob_size // 2)
+
+        # Draw hover effect
         if self.hover or self.dragging:
             pygame.draw.rect(surf, CURRENT_THEME.BORDER, self.rect, 1, border_radius=8)
+
+        # Reset the clipping rectangle
+        surf.set_clip(clip_rect)
 
 class TextInput(Widget):
     def __init__(self, rect: pygame.Rect, text: str = "", on_change: Optional[Callable] = None):
@@ -265,9 +301,9 @@ class TextInput(Widget):
         pygame.draw.rect(surf, CURRENT_THEME.WINDOW_BG, self.rect, border_radius=6)
         pygame.draw.rect(surf, CURRENT_THEME.BORDER, self.rect, 1, border_radius=6)
         if self._is_placeholder and self.placeholder:
-            txt = FONT.render(self.placeholder, True, CURRENT_THEME.SUBTEXT)
+            txt = CURRENT_THEME.FONT.render(self.placeholder, True, CURRENT_THEME.SUBTEXT)
         else:
-            txt = FONT.render(self.text, True, CURRENT_THEME.TEXT)
+            txt = CURRENT_THEME.FONT.render(self.text, True, CURRENT_THEME.TEXT)
         surf.blit(txt, (self.rect.x + 8, self.rect.y + (self.rect.height - txt.get_height()) / 2))
         if self.active:
             # cursor blinking
@@ -277,7 +313,7 @@ class TextInput(Widget):
                 self.cursor_timer = 0.0
             if self.cursor_visible:
                 # compute cursor x
-                pre = FONT.render(self.text[:self.cursor], True, CURRENT_THEME.TEXT)
+                pre = CURRENT_THEME.FONT.render(self.text[:self.cursor], True, CURRENT_THEME.TEXT)
                 cx = self.rect.x + 8 + pre.get_width()
                 pygame.draw.line(surf, CURRENT_THEME.TEXT, (cx, self.rect.y + 6), (cx, self.rect.y + self.rect.height - 6), 2)
 
@@ -285,6 +321,7 @@ class TextInput(Widget):
 class Window(Widget):
     def __init__(self, x ,y,w,h, title: str = "Window"):
         self.rect = pygame.Rect(x, y, w, h)
+        self.header = pygame.Rect(x, y, w, 28)
         self.title = title
         self.visible = True
         self.minimized = False
@@ -301,24 +338,23 @@ class Window(Widget):
         self.padding = 5
         self._parent_master = None
         self.isMain = False
-        self.D_info = False
+        self.D_info = True
 
         # add grid layout
         self.layout = GridLayout(pygame.Rect(0, 0, 1, 1), self.Grid[0], self.Grid[1], self.padding)
- 
 
         # control buttons
-        self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
+        if not self.isMain:
+            self.close_btn = Button(pygame.Rect(0, 0, 28, 20), "X", self._close)
         self.min_btn = Button(pygame.Rect(0, 0, 28, 20), "_", self._minimize)
 
-        
-    def add(self, widget: Widget):
-        # not needed anymore, kept for reference
-        # store widget's rect relative to window origin
-        rel_x = widget.rect.x - self.rect.x
-        rel_y = widget.rect.y - self.rect.y
-        widget._relative_rect = pygame.Rect(rel_x, rel_y, widget.rect.width, widget.rect.height)
-        self.widgets.append(widget)
+        # check if main window (no close button)
+        if title == "Main":
+            self.isMain = True
+
+        # Cursors
+        self.current_cursor = ARROW_CURSOR
+        pygame.mouse.set_cursor(self.current_cursor)
 
     # Add to grid layout
     def add_button(self, row: int, col: int, text: str, on_click: Optional[Callable] = None) -> Button:
@@ -343,12 +379,12 @@ class Window(Widget):
         return t
 
     def _close(self):
-        self.visible = not self.visible
-        print(self.visible)
+            self.visible = not self.visible
 
     def _minimize(self):
         self.minimized = not self.minimized
 
+        
     def clamp_to_screen(self):
         """Ensure the window stays fully inside the pygame display surface."""
         surf = pygame.display.get_surface()
@@ -364,20 +400,51 @@ class Window(Widget):
         self.rect.x = max(0, min(self.rect.x, sw - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, sh - self.rect.height))
 
+    def calculate_Resize_Border(self):
+        """Calculate rectangles for resize borders and corners."""
+        r = self.rect
+        margin = self.resize_margin
+
+        # Corners
+        nw_margin = pygame.Rect(r.x, r.y, margin, margin)
+        ne_margin = pygame.Rect(r.right - margin, r.y, margin, margin)
+        sw_margin = pygame.Rect(r.x, r.bottom - margin, margin, margin)
+        se_margin = pygame.Rect(r.right - margin, r.bottom - margin, margin, margin)
+
+        # Sides (excluding corners)
+        left_margin = pygame.Rect(r.x, r.y + margin, margin, r.height - 2 * margin)
+        right_margin = pygame.Rect(r.right - margin, r.y + margin, margin, r.height - 2 * margin)
+        top_margin = pygame.Rect(r.x + margin, r.y, r.width - 2 * margin, margin)
+        bottom_margin = pygame.Rect(r.x + margin, r.bottom - margin, r.width - 2 * margin, margin)
+
+        return {
+            'nw': nw_margin,
+            'ne': ne_margin,
+            'sw': sw_margin,
+            'se': se_margin,
+            'w': left_margin,
+            'e': right_margin,
+            'n': top_margin,
+            's': bottom_margin
+        }
+
+
     def handle_event(self, event):
         if not self.visible:
             return False
             
-        header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
+        if not self.minimized:
+            self.header = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 28)
 
         # handle control buttons first
-        self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
-        if self.close_btn.handle_event(event):
-            return True
+        if not self.isMain:
+            self.close_btn.rect.topleft = (self.rect.right - 32, self.rect.y + 4)
+            if not self.isMain:
+                if self.close_btn.handle_event(event):
+                    return True
         self.min_btn.rect.topleft = (self.rect.right - 64, self.rect.y + 4)
         if self.min_btn.handle_event(event):
             return True
-
 
         # pass event to layout widgets first, so they get priority
         if self.layout and self.layout.handle_event(event):
@@ -386,33 +453,19 @@ class Window(Widget):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             # 1. Check if the user clicked on a resize border
-            r = self.rect
-            left_margin = pygame.Rect(r.x, r.y, self.resize_margin, r.height)
-            right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
-            # top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
-            bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
-            se_margin = pygame.Rect(r.right, r.bottom, self.resize_margin, self.resize_margin)
-            ne_margin = pygame.Rect(r.right , r.y - self.resize_margin, self.resize_margin, self.resize_margin)
-            nw_margin = pygame.Rect(r.x - self.resize_margin, r.y - self.resize_margin, self.resize_margin, self.resize_margin)
-            sw_margin = pygame.Rect(r.x - self.resize_margin, r.bottom, self.resize_margin, self.resize_margin)
 
-
-            if left_margin.collidepoint(mx, my): self.resize_dir = 'w'
-            elif right_margin.collidepoint(mx, my): self.resize_dir = 'e'
-            # elif top_margin.collidepoint(mx, my): self.resize_dir = 'n'
-            elif bottom_margin.collidepoint(mx, my): self.resize_dir = 's'
-            elif se_margin.collidepoint(mx, my): self.resize_dir = 'se'
-            elif ne_margin.collidepoint(mx, my): self.resize_dir = 'ne' 
-            elif nw_margin.collidepoint(mx, my): self.resize_dir = 'nw'
-            elif sw_margin.collidepoint(mx, my): self.resize_dir = 'sw'
-
-            if self.resize_dir and not self.dragging:
-                self.resizing = True
-                self.offset = (mx, my)
-                return True
+            margins = self.calculate_Resize_Border()
+            for key, margin in margins.items():
+                if margin.collidepoint(mx, my) and not self.dragging:
+                    self.resize_dir = key
+                    self.resizing = True
+                    self.offset = (mx, my)
+                    self.clamp_to_screen()                  
+                    return True
+                
                 
             # 2. Check if the user clicked on the header for dragging
-            if header.collidepoint(mx, my):
+            if self.header.collidepoint(mx, my):
                 self.dragging = True
                 self.offset = (mx - self.rect.x, my - self.rect.y)
                 return True
@@ -423,6 +476,38 @@ class Window(Widget):
             self.resize_dir = None
 
         elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            # Change cursor if over resize borders   
+            margins = self.calculate_Resize_Border()
+            for key, margin in margins.items():
+
+                if margin.collidepoint(mx, my) and not self.dragging:
+                    if key in ['nw', 'se']:
+                        if self.current_cursor != RESIZE_NWSE_CURSOR:
+                            pygame.mouse.set_cursor(RESIZE_NWSE_CURSOR)
+                            self.current_cursor = RESIZE_NWSE_CURSOR
+                    elif key in ['ne', 'sw']:
+                        if self.current_cursor != RESIZE_NESW_CURSOR:
+                            pygame.mouse.set_cursor(RESIZE_NESW_CURSOR)
+                            self.current_cursor = RESIZE_NESW_CURSOR
+                    elif key in ['n', 's']:
+                        if self.current_cursor != RESIZE_NS_CURSOR:
+                            pygame.mouse.set_cursor(RESIZE_NS_CURSOR)
+                            self.current_cursor = RESIZE_NS_CURSOR
+                    elif key in ['e', 'w']:
+                        if self.current_cursor != RESIZE_WE_CURSOR:
+                            pygame.mouse.set_cursor(RESIZE_WE_CURSOR)
+                            self.current_cursor = RESIZE_WE_CURSOR
+
+                    break
+                
+                else:
+                    if self.current_cursor != ARROW_CURSOR:
+                        pygame.mouse.set_cursor(ARROW_CURSOR)
+                        self.current_cursor = ARROW_CURSOR
+
+                    
+
             if self.dragging:
                 self.rect.x = event.pos[0] - self.offset[0]
                 self.rect.y = event.pos[1] - self.offset[1]
@@ -474,7 +559,7 @@ class Window(Widget):
         header_col = CURRENT_THEME.HEADER
         pygame.draw.rect(surf, header_col, header, border_radius=10)
         # title
-        title_s = FONT.render(self.title, True, text_col)
+        title_s = CURRENT_THEME.FONT.render(self.title, True, text_col)
         surf.blit(title_s, (self.rect.x + 10, self.rect.y + 3))
         # ensure control icon rects are always computed from current rect (prevents lag)
         if not self.isMain:
@@ -516,31 +601,15 @@ class Window(Widget):
         show_margin = True
 
         if not self.D_info:
-            return
+            return True
         info = f"Pos: ({self.rect.x},{self.rect.y}) Size: ({self.rect.width}x{self.rect.height})"
-        txt = SMALL_FONT.render(info, True, (200, 0, 0))
+        txt = CURRENT_THEME.SMALL_FONT.render(info, True, (200, 0, 0))
         surf.blit(txt, (self.rect.x + 10, self.rect.bottom - 20))
 
         if show_margin:
-            # draw resize margins
-            r = self.rect
-            left_margin = pygame.Rect(r.x, r.y, self.resize_margin, r.height)
-            right_margin = pygame.Rect(r.right - self.resize_margin, r.y, self.resize_margin, r.height)
-            top_margin = pygame.Rect(r.x, r.y, r.width, self.resize_margin)
-            bottom_margin = pygame.Rect(r.x, r.bottom - self.resize_margin, r.width, self.resize_margin)
-            se_margin = pygame.Rect(r.right, r.bottom, self.resize_margin, self.resize_margin)
-            ne_margin = pygame.Rect(r.right , r.y - self.resize_margin, self.resize_margin, self.resize_margin)
-            nw_margin = pygame.Rect(r.x - self.resize_margin, r.y - self.resize_margin, self.resize_margin, self.resize_margin)
-            sw_margin = pygame.Rect(r.x - self.resize_margin, r.bottom, self.resize_margin, self.resize_margin)
-
-            pygame.draw.rect(surf, (255, 0, 0), left_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), right_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), top_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), bottom_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), se_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), ne_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), nw_margin, 1)
-            pygame.draw.rect(surf, (255, 0, 0), sw_margin, 1)
+            margins = self.calculate_Resize_Border()
+            for margin in margins.values():
+                pygame.draw.rect(surf, (0, 200, 0), margin, 1)
 
 # Grid Layout Manager
 class GridLayout:
@@ -642,10 +711,3 @@ class MasterWindow(Widget):
         # Then, draw all child windows
         for child in self.child_windows:
             child.draw(surf)
-
-
-
-
-
-
- 

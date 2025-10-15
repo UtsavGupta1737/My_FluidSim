@@ -4,15 +4,19 @@ import math
 from dataclasses import dataclass, asdict
 from typing import List, Tuple
 
+# Import the UI components and the theme setup from the other files
+from ui_components import set_theme, MasterWindow, Window
+
+
 # Configuration
 WIDTH, HEIGHT = 1000, 700
 BG_COLOR = (30, 30, 40)
 FPS = 60
 
 pygame.init()
-font = pygame.font.SysFont("Arial", 16)
+set_theme("dark")
 
-@dataclass
+@dataclass(eq=False)
 class Ball:
     x: float
     y: float
@@ -24,6 +28,12 @@ class Ball:
 
     def to_dict(self):
         return asdict(self)
+
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return self is other
 
 
 def random_ball(width, height):
@@ -50,6 +60,43 @@ def resolve_wall_collision(ball: Ball, width, height):
     if ball.y + ball.radius > height:
         ball.y = height - ball.radius
         ball.vy *= -1
+
+
+class Grid:
+    def __init__(self, width, height, cell_size):
+        self.width = width
+        self.height = height
+        self.cell_size = cell_size
+        self.cols = int(math.ceil(width / cell_size))
+        self.rows = int(math.ceil(height / cell_size))
+        self.cells = [[] for _ in range(self.cols * self.rows)]
+
+    def clear(self):
+        for cell in self.cells:
+            cell.clear()
+
+    def add(self, ball: Ball):
+        min_x = int(max(0, (ball.x - ball.radius) / self.cell_size))
+        max_x = int(min(self.cols - 1, (ball.x + ball.radius) / self.cell_size))
+        min_y = int(max(0, (ball.y - ball.radius) / self.cell_size))
+        max_y = int(min(self.rows - 1, (ball.y + ball.radius) / self.cell_size))
+
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                self.cells[y * self.cols + x].append(ball)
+
+    def get_nearby(self, ball: Ball) -> List[Ball]:
+        min_x = int(max(0, (ball.x - ball.radius) / self.cell_size))
+        max_x = int(min(self.cols - 1, (ball.x + ball.radius) / self.cell_size))
+        min_y = int(max(0, (ball.y - ball.radius) / self.cell_size))
+        max_y = int(min(self.rows - 1, (ball.y + ball.radius) / self.cell_size))
+
+        nearby_balls = set()
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                for b in self.cells[y * self.cols + x]:
+                    nearby_balls.add(b)
+        return list(nearby_balls)
 
 
 def resolve_ball_collision(a: Ball, b: Ball):
@@ -87,6 +134,8 @@ def resolve_ball_collision(a: Ball, b: Ball):
         b.vy -= (impulse * ny) / b.mass
 
 
+font = pygame.font.SysFont("Arial", 18)
+clock = None  # will be set in main()   
 
 
 
@@ -95,19 +144,56 @@ def draw_ui(screen, balls, paused):
     surf = font.render(info, True, (220, 220, 220))
     screen.blit(surf, (10, HEIGHT - 24))
 
-    hint = "LeftClick: add | RightClick: remove | Space: pause"
+    hint = "LeftClick: add | RightClick: remove | Space: pause | Esc: exit"
     surf2 = font.render(hint, True, (180, 180, 180))
     screen.blit(surf2, (10, HEIGHT - 44))
 
 
 def main():
-    global clock
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    global clock, WIDTH, HEIGHT
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("Ball Collision Simulation")
     clock = pygame.time.Clock()
 
+    # Create the master UI window   
+    master_window = MasterWindow()
+
+    # Create the controls window
+    controls_win = Window(10, 40, 250, 200, title="Main")
+    master_window.add_child(controls_win)
+
     balls: List[Ball] = [random_ball(WIDTH, HEIGHT) for _ in range(12)]
+
+    def on_ball_count_change(new_count_str):
+        try:
+            new_count = int(new_count_str)
+            current_count = len(balls)
+            if new_count > current_count:
+                for _ in range(new_count - current_count):
+                    balls.append(random_ball(WIDTH, HEIGHT))
+            elif new_count < current_count:
+                for _ in range(current_count - new_count):
+                    if balls:
+                        balls.pop()
+        except ValueError:
+            # Handle cases where the input is not a valid integer
+            pass
+    
+    # Add a button to add balls
+    controls_win.add_button(0, 0, "Add Ball", on_click=lambda: balls.append(random_ball(WIDTH, HEIGHT)))
+    controls_win.add_button(4, 0, "Quit", on_click=lambda: pygame.event.post(pygame.event.Event(pygame.QUIT)))
+    
     paused = False
+    dragging = False
+    drag_start_pos = None
+
+    # Add a text input to control the number of balls
+    controls_win.add_textinput(1, 0, "Ball Count", on_change=on_ball_count_change)
+    
+    # Set the theme
+    set_theme("dark")
+
+    grid = Grid(WIDTH, HEIGHT, 50)  # cell size of 50
 
     running = True
     while running:
@@ -115,19 +201,39 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif master_window.handle_event(event):
+                pass  # event handled by UI
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = pygame.mouse.get_pos()
-                if event.button == 1:  # left -> add ball at mouse
-                    b = random_ball(WIDTH, HEIGHT)
-                    b.x, b.y = mx, my
-                    balls.append(b)
+                if event.button == 1:  # left -> start drag
+                    dragging = True
+                    drag_start_pos = event.pos
                 elif event.button == 3:  # right -> remove nearest
+                    mx, my = pygame.mouse.get_pos()
                     if balls:
                         nearest = min(balls, key=lambda bb: (bb.x - mx) ** 2 + (bb.y - my) ** 2)
                         balls.remove(nearest)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1 and dragging:
+                    dragging = False
+                    drag_end_pos = event.pos
+                    
+                    # calculate velocity based on drag vector
+                    dx = drag_end_pos[0] - drag_start_pos[0]
+                    dy = drag_end_pos[1] - drag_start_pos[1]
+
+                    # create a new ball
+                    b = random_ball(WIDTH, HEIGHT)
+                    b.x, b.y = drag_start_pos
+                    b.vx = dx * 0.1
+                    b.vy = dy * 0.1
+                    balls.append(b)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     paused = not paused
+                elif event.key == pygame.K_ESCAPE:
+                    running = False
+
+            
 
         if not paused:
             # integrate
@@ -139,10 +245,15 @@ def main():
                 b.vy *= 0.999
 
             # collisions
-            n = len(balls)
-            for i in range(n):
-                for j in range(i + 1, n):
-                    resolve_ball_collision(balls[i], balls[j])
+            grid.clear()
+            for ball in balls:
+                grid.add(ball)
+
+            for ball in balls:
+                nearby_balls = grid.get_nearby(ball)
+                for other in nearby_balls:
+                    if id(ball) < id(other):
+                        resolve_ball_collision(ball, other)
 
             for b in balls:
                 resolve_wall_collision(b, WIDTH, HEIGHT)
@@ -155,7 +266,12 @@ def main():
             vy = int(b.vy * 8)
             pygame.draw.line(screen, (255, 255, 255), (int(b.x), int(b.y)), (int(b.x + vx), int(b.y + vy)), 1)
 
+        if dragging:
+            current_pos = pygame.mouse.get_pos()
+            pygame.draw.line(screen, (255, 255, 255), drag_start_pos, current_pos, 2)
+
         draw_ui(screen, balls, paused)
+        master_window.draw(screen)
         pygame.display.flip()
 
     pygame.quit()
