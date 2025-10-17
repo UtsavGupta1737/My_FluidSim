@@ -20,6 +20,7 @@ set_theme("light")
 win = Window(50, 50, 400, 300, title="Main")
 win2 = Window(500, 50, 400, 300, title="Window 2")
 
+
 master_window.add_child(win)
 master_window.add_child(win2)
 
@@ -32,6 +33,8 @@ win.add_slider(2, 0, "Volume", 0, 100, 50)
 win.add_slider(2, 1, "Brightness", 0, 100, 50)
 win.add_textinput(3, 0, "Name", lambda v: print(v))
 win.add_textinput(3, 1, "Age", lambda v: print(v))
+win2.add_textinput(0, 0, "Name", lambda v: print(v))
+win2.add_textinput(0, 1, "Age", lambda v: print(v))
 
 
 

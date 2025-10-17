@@ -7,11 +7,17 @@ from typing import List, Tuple
 # Import the UI components and the theme setup from the other files
 from ui_components import set_theme, MasterWindow, Window
 
-
 # Configuration
+
 WIDTH, HEIGHT = 1000, 700
 BG_COLOR = (30, 30, 40)
 FPS = 60
+BALL_SIZE = 20
+BALL_COUNT = 10
+GRAVITY = 9.8
+AIR_DRAG = 0.001
+GRAV_ON = True
+DRAG_ON = True
 
 pygame.init()
 set_theme("dark")
@@ -35,9 +41,13 @@ class Ball:
     def __eq__(self, other):
         return self is other
 
+# Return a ball object
+def random_ball(width, height, r = None):
+    if r is None:
+        radius = random.randint(10, 20)
+    else:
+        radius = int(r)
 
-def random_ball(width, height):
-    radius = random.randint(8, 24)
     x = random.uniform(radius, width - radius)
     y = random.uniform(radius, height - radius)
     vx = random.uniform(-200, 200) / 60.0
@@ -61,6 +71,14 @@ def resolve_wall_collision(ball: Ball, width, height):
         ball.y = height - ball.radius
         ball.vy *= -1
 
+def apply_gravity(self, dt, gravity):
+        self.vy += gravity * dt
+
+def apply_air_drag(self, dt, air_drag):
+    drag_x = -air_drag * self.vx * abs(self.vx)
+    drag_y = -air_drag * self.vy * abs(self.vy)
+    self.vx += drag_x
+    self.vy += drag_y
 
 class Grid:
     def __init__(self, width, height, cell_size):
@@ -98,7 +116,13 @@ class Grid:
                     nearby_balls.add(b)
         return list(nearby_balls)
 
-
+    # draw grid ouline
+    def draw(self, screen):
+        for x in range(0, self.width, self.cell_size):
+            pygame.draw.line(screen, (250, 250, 250), (x, 0), (x, self.height))
+        for y in range(0, self.height, self.cell_size):
+            pygame.draw.line(screen, (250, 250, 250), (0, y), (self.width, y))
+        
 def resolve_ball_collision(a: Ball, b: Ball):
     dx = b.x - a.x
     dy = b.y - a.y
@@ -132,8 +156,6 @@ def resolve_ball_collision(a: Ball, b: Ball):
         a.vy += (impulse * ny) / a.mass
         b.vx -= (impulse * nx) / b.mass
         b.vy -= (impulse * ny) / b.mass
-
-
 font = pygame.font.SysFont("Arial", 18)
 clock = None  # will be set in main()   
 
@@ -158,11 +180,7 @@ def main():
     # Create the master UI window   
     master_window = MasterWindow()
 
-    # Create the controls window
-    controls_win = Window(10, 40, 250, 200, title="Main")
-    master_window.add_child(controls_win)
-
-    balls: List[Ball] = [random_ball(WIDTH, HEIGHT) for _ in range(12)]
+    balls: List[Ball] = [random_ball(WIDTH, HEIGHT) for _ in range(BALL_COUNT)]
 
     def on_ball_count_change(new_count_str):
         try:
@@ -179,24 +197,62 @@ def main():
             # Handle cases where the input is not a valid integer
             pass
     
-    # Add a button to add balls
-    controls_win.add_button(0, 0, "Add Ball", on_click=lambda: balls.append(random_ball(WIDTH, HEIGHT)))
-    controls_win.add_button(4, 0, "Quit", on_click=lambda: pygame.event.post(pygame.event.Event(pygame.QUIT)))
-    
     paused = False
     dragging = False
     drag_start_pos = None
 
-    # Add a text input to control the number of balls
-    controls_win.add_textinput(1, 0, "Ball Count", on_change=on_ball_count_change)
+    UI_LAYOUT = [
+    {
+        "title": "Main",
+        "x": 10, "y": 40, "width": 250, "height": 200,
+        "widgets": [
+            {"type": "textinput", "row": 0, "col": 0, "text": "Ball Count", "on_change": lambda x: on_ball_count_change(x)},
+            {"type": "slider", "row": 1, "col": 0, "text": "Ball Count", "min_val": 0, "max_val": 500, "value": len(balls), "on_change": lambda v: on_ball_count_change(v)},
+            {"type": "button", "row": 4, "col": 1, "text": "Quit", "on_click": lambda: pygame.event.post(pygame.event.Event(pygame.QUIT))},
+            {"type": "button", "row": 2, "col": 0, "text": "Controls","on_click": lambda: master_window.child_windows["Controls"]._close()},
+            {"type": "slider", "row": 0, "col": 1, "text": "Ball Size", "min_val": 10, "max_val": 50, "value":BALL_SIZE, "on_change": lambda v: globals().update(BALL_SIZE=v)},
+            {"type": "button", "row": 4, "col": 0, "text": "Fullscreen", "on_click": lambda: toggle_Fullscreen(screen)},
+            {"type": "checkbox", "row": 3, "col": 0, "text": "Gravity", "on_change": lambda :toggle_Gravity()},
+            {"type": "checkbox", "row": 3, "col": 1, "text": "Air Drag", "on_change": lambda :toggle_Drag()}
+
+        ]
+    },
+    {
+        "title": "Controls",
+        "x": 300, "y": 40, "width": 250, "height": 200,
+        "widgets": [
+            {"type": "button", "row": 0, "col": 0, "text": "Add Ball", "on_click": lambda: balls.append(random_ball(WIDTH, HEIGHT))},
+            {"type": "button", "row": 1, "col": 0, "text": "Clear Balls", "on_click": lambda : balls.clear()}
+            
+        ] 
+    }
+                ]
+
+    master_window.create_ui_from_layout(UI_LAYOUT)
     
     # Set the theme
     set_theme("dark")
 
     grid = Grid(WIDTH, HEIGHT, 50)  # cell size of 50
 
+    def toggle_Fullscreen(screen):
+        if screen.get_flags() & pygame.FULLSCREEN:
+            screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        else:
+            screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
+    def toggle_Gravity():
+        global GRAV_ON
+        GRAV_ON = not GRAV_ON
+    def toggle_Drag():
+        global DRAG_ON
+        DRAG_ON = not DRAG_ON
+        
+
+
+
     running = True
     while running:
+        
         dt = clock.tick(FPS) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -222,16 +278,20 @@ def main():
                     dy = drag_end_pos[1] - drag_start_pos[1]
 
                     # create a new ball
-                    b = random_ball(WIDTH, HEIGHT)
+                    b = random_ball(WIDTH, HEIGHT, BALL_SIZE)
                     b.x, b.y = drag_start_pos
                     b.vx = dx * 0.1
                     b.vy = dy * 0.1
                     balls.append(b)
+
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_ESCAPE:
                     running = False
+                if event.key == pygame.K_f: # Press 'F' to toggle fullscreen
+                    toggle_Fullscreen(screen)
+
 
             
 
@@ -241,8 +301,8 @@ def main():
                 b.x += b.vx * dt * 60
                 b.y += b.vy * dt * 60
                 # damping
-                b.vx *= 0.999
-                b.vy *= 0.999
+                b.vx *= (1 - AIR_DRAG * dt)
+                b.vy *= (1 - AIR_DRAG * dt)
 
             # collisions
             grid.clear()
@@ -250,6 +310,11 @@ def main():
                 grid.add(ball)
 
             for ball in balls:
+                grid.add(ball)
+                if GRAV_ON:
+                    apply_gravity(ball, dt, GRAVITY)
+                if DRAG_ON:
+                    apply_air_drag(ball, dt, AIR_DRAG)
                 nearby_balls = grid.get_nearby(ball)
                 for other in nearby_balls:
                     if id(ball) < id(other):
@@ -257,6 +322,9 @@ def main():
 
             for b in balls:
                 resolve_wall_collision(b, WIDTH, HEIGHT)
+
+
+        # draw
 
         screen.fill(BG_COLOR)
         for b in balls:
@@ -271,8 +339,12 @@ def main():
             pygame.draw.line(screen, (255, 255, 255), drag_start_pos, current_pos, 2)
 
         draw_ui(screen, balls, paused)
+        grid.draw(screen)
         master_window.draw(screen)
         pygame.display.flip()
+
+        # Debug info
+        print(f"Cells : {len(grid.cells)}")
 
     pygame.quit()
 
