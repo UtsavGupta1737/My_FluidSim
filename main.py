@@ -8,7 +8,6 @@ from typing import List, Tuple
 from ui_components import set_theme, MasterWindow, Window
 
 # Configuration
-
 WIDTH, HEIGHT = 1000, 700
 BG_COLOR = (30, 30, 40)
 FPS = 60
@@ -55,7 +54,6 @@ def random_ball(width, height, r = None):
     mass = math.pi * radius * radius
     color = tuple(random.randint(50, 255) for _ in range(3))
     return Ball(x, y, vx, vy, radius, mass, color)
-
 
 def resolve_wall_collision(ball: Ball, width, height):
     if ball.x - ball.radius < 0:
@@ -159,8 +157,6 @@ def resolve_ball_collision(a: Ball, b: Ball):
 font = pygame.font.SysFont("Arial", 18)
 clock = None  # will be set in main()   
 
-
-
 def draw_ui(screen, balls, paused):
     info = f"Balls: {len(balls)} | {'Paused' if paused else 'Running'} | FPS: {int(clock.get_fps())}"
     surf = font.render(info, True, (220, 220, 220))
@@ -206,14 +202,14 @@ def main():
         "title": "Main",
         "x": 10, "y": 40, "width": 250, "height": 200,
         "widgets": [
-            {"type": "textinput", "row": 0, "col": 0, "text": "Ball Count", "on_change": lambda x: on_ball_count_change(x)},
-            {"type": "slider", "row": 1, "col": 0, "text": "Ball Count", "min_val": 0, "max_val": 500, "value": len(balls), "on_change": lambda v: on_ball_count_change(v)},
-            {"type": "button", "row": 4, "col": 1, "text": "Quit", "on_click": lambda: pygame.event.post(pygame.event.Event(pygame.QUIT))},
-            {"type": "button", "row": 2, "col": 0, "text": "Controls","on_click": lambda: master_window.child_windows["Controls"]._close()},
-            {"type": "slider", "row": 0, "col": 1, "text": "Ball Size", "min_val": 10, "max_val": 50, "value":BALL_SIZE, "on_change": lambda v: globals().update(BALL_SIZE=v)},
-            {"type": "button", "row": 4, "col": 0, "text": "Fullscreen", "on_click": lambda: toggle_Fullscreen(screen)},
-            {"type": "checkbox", "row": 3, "col": 0, "text": "Gravity", "on_change": lambda :toggle_Gravity()},
-            {"type": "checkbox", "row": 3, "col": 1, "text": "Air Drag", "on_change": lambda :toggle_Drag()}
+            {"type": "textinput", "text": "Ball Count", "on_change": lambda x: on_ball_count_change(x)},
+            {"type": "slider", "text": "Ball Count", "min_val": 0, "max_val": 500, "value": len(balls), "on_change": lambda v: on_ball_count_change(v)},
+            {"type": "button", "text": "Quit", "on_click": lambda: pygame.event.post(pygame.event.Event(pygame.QUIT))},
+            {"type": "button", "text": "Controls","on_click": lambda: master_window.child_windows["Controls"]._close()},
+            {"type": "slider", "text": "Ball Size", "min_val": 10, "max_val": 50, "value":BALL_SIZE, "on_change": lambda v: globals().update(BALL_SIZE=v)},
+            {"type": "button", "text": "Fullscreen", "on_click": lambda: toggle_Fullscreen(screen)},
+            {"type": "checkbox", "text": "Gravity", "on_change": lambda :toggle_Gravity()},
+            {"type": "checkbox", "text": "Air Drag", "on_change": lambda :toggle_Drag()}
 
         ]
     },
@@ -221,8 +217,8 @@ def main():
         "title": "Controls",
         "x": 300, "y": 40, "width": 250, "height": 200,
         "widgets": [
-            {"type": "button", "row": 0, "col": 0, "text": "Add Ball", "on_click": lambda: balls.append(random_ball(WIDTH, HEIGHT))},
-            {"type": "button", "row": 1, "col": 0, "text": "Clear Balls", "on_click": lambda : balls.clear()}
+            {"type": "button", "text": "Add Ball", "on_click": lambda: balls.append(random_ball(WIDTH, HEIGHT))},
+            {"type": "button", "text": "Clear Balls", "on_click": lambda : balls.clear()}
             
         ] 
     }
@@ -344,7 +340,7 @@ def main():
         pygame.display.flip()
 
         # Debug info
-        print(f"Cells : {len(grid.cells)}")
+        # print(f"Cells : {len(grid.cells)}")
 
     pygame.quit()
 
